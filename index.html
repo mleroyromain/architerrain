@@ -1,0 +1,178 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#111827">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon.svg">
+<title>ArchiTerrain V1.3</title>
+<style>
+:root{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#111827;background:#f5f6f8}
+*{box-sizing:border-box}body{margin:0}header{padding:22px 18px;background:#111827;color:#fff}
+main{max-width:820px;margin:auto;padding:18px}.brand{font-size:28px;font-weight:800}.sub{opacity:.75}
+.card{background:#fff;border-radius:18px;padding:18px;margin:14px 0;box-shadow:0 2px 12px #0001}
+input,button,select{width:100%;padding:14px;border-radius:12px;font-size:16px;margin:7px 0}
+input,select{border:1px solid #d1d5db;background:#fff}button{border:0;background:#111827;color:#fff;font-weight:700}
+.small{font-size:13px;color:#6b7280}.title{font-weight:750}.item{padding:14px 0;border-top:1px solid #eee}
+.row{display:flex;justify-content:space-between;gap:12px;align-items:center}.badge{padding:6px 9px;border-radius:999px;font-size:12px;font-weight:700}
+.ok{background:#dcfce7;color:#166534}.warn{background:#fef3c7;color:#92400e}.danger{background:#fee2e2;color:#991b1b}
+.error{background:#fee2e2;color:#991b1b;padding:12px;border-radius:12px}.success{background:#dcfce7;color:#166534;padding:12px;border-radius:12px}
+#loading{display:none;text-align:center;padding:15px}#map{height:320px;border-radius:14px;margin-top:14px}a{color:#2563eb;text-decoration:none}
+.candidate{border:1px solid #ddd;border-radius:12px;padding:12px;margin:8px 0}.candidate button{margin:4px 0 0}
+</style>
+</head>
+<body>
+<header><div class="brand">ArchiTerrain</div><div class="sub">Pré-diagnostic urbanistique · V1.3</div></header>
+<main>
+<section class="card">
+<div class="title">Analyser un terrain</div>
+<div class="small">Adresse ou références cadastrales</div>
+<input id="address" value="28 boulevard André, 93250 Villemomble" placeholder="Ex. 28 boulevard André, Villemomble">
+<input id="parcelRef" placeholder="Optionnel : section + parcelle, ex. AQ 61">
+<button onclick="analyze()">Analyser le terrain</button>
+<div id="loading">⏳ Recherche de l'adresse et de la parcelle…</div>
+</section>
+<div id="result"></div>
+</main>
+<script>
+const CARTO="https://apicarto.ign.fr/api";
+const BAN="https://api-adresse.data.gouv.fr/search/";
+
+async function json(url){
+  const r=await fetch(url);
+  if(!r.ok) throw new Error("Service indisponible ("+r.status+")");
+  return r.json();
+}
+function esc(v){return String(v??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]))}
+function badge(s){return `<span class="badge ${s}">${s==="ok"?"Vérifié":s==="danger"?"Contrainte":"À vérifier"}</span>`}
+function pick(p,keys){for(const k of keys)if(p?.[k]!==undefined&&p[k]!==null&&p[k]!=="")return p[k];return null}
+function labels(fc){return [...new Set((fc?.features||[]).map(f=>pick(f.properties,["libelle","libelle_zone","libelle_long","nom","nom_zone","typezone","libelle_acte","categorie","libelle_sup","id"])).filter(Boolean))]}
+
+async function geocode(q){
+  const j=await json(BAN+"?q="+encodeURIComponent(q)+"&limit=1");
+  if(!j.features?.length)throw new Error("Adresse introuvable.");
+  return j.features[0];
+}
+
+function bboxAround([lon,lat],delta=0.00035){
+  return {type:"Polygon",coordinates:[[[lon-delta,lat-delta],[lon+delta,lat-delta],[lon+delta,lat+delta],[lon-delta,lat+delta],[lon-delta,lat-delta]]]};
+}
+
+async function parcelsByGeom(geom){
+  const u=CARTO+"/cadastre/parcelle?geom="+encodeURIComponent(JSON.stringify(geom))+"&source_ign=PCI";
+  const j=await json(u);
+  return j.features||[];
+}
+
+async function parcelByRefs(insee,section,numero){
+  const qs=new URLSearchParams({code_insee:insee,section:section.toUpperCase(),numero:numero.padStart(4,"0"),source_ign:"PCI"});
+  const j=await json(CARTO+"/cadastre/parcelle?"+qs.toString());
+  return j.features||[];
+}
+
+function centroid(feature){
+  const g=feature.geometry;
+  if(!g)return null;
+  let pts=[];
+  function walk(x){if(typeof x[0]==="number")pts.push(x);else x.forEach(walk)}
+  walk(g.coordinates);
+  if(!pts.length)return null;
+  return pts.reduce((a,p)=>[a[0]+p[0]/pts.length,a[1]+p[1]/pts.length],[0,0]);
+}
+function dist2(a,b){return (a[0]-b[0])**2+(a[1]-b[1])**2}
+
+async function findParcel(addressFeature, ref){
+  const insee=addressFeature.properties?.citycode;
+  const coords=addressFeature.geometry.coordinates;
+
+  if(ref){
+    const m=ref.trim().match(/^([A-Za-z]{1,3})\s*(\d{1,4})$/);
+    if(!m)throw new Error("Référence cadastrale invalide. Exemple : AQ 61.");
+    const direct=await parcelByRefs(insee,m[1],m[2]);
+    if(!direct.length)throw new Error(`Parcelle ${m[1].toUpperCase()} ${m[2]} introuvable dans la commune.`);
+    return {feature:direct[0],candidates:direct};
+  }
+
+  // Un point BAN peut tomber sur la chaussée et non dans la parcelle.
+  // On interroge donc une petite emprise autour de l'adresse.
+  let features=await parcelsByGeom({type:"Point",coordinates:coords});
+  if(features.length)return {feature:features[0],candidates:features};
+
+  features=await parcelsByGeom(bboxAround(coords));
+  if(!features.length)throw new Error("Aucune parcelle trouvée autour de cette adresse.");
+
+  const ranked=features.map(f=>({f,c:centroid(f)})).filter(x=>x.c).sort((a,b)=>dist2(a.c,coords)-dist2(b.c,coords));
+  return {feature:ranked[0]?.f||features[0],candidates:ranked.map(x=>x.f)};
+}
+
+async function gpu(path,geom){
+  const u=CARTO+"/gpu/"+path+"?geom="+encodeURIComponent(JSON.stringify(geom));
+  try{return await json(u)}catch(e){return {features:[],error:e.message}}
+}
+
+async function analyze(){
+  const address=document.getElementById("address").value.trim();
+  const ref=document.getElementById("parcelRef").value.trim();
+  if(!address)return;
+  document.getElementById("loading").style.display="block";
+  document.getElementById("result").innerHTML="";
+  try{
+    const adr=await geocode(address);
+    const found=await findParcel(adr,ref);
+    const parcel=found.feature;
+    const geom=parcel.geometry;
+    const [zones,prescriptions,sups]=await Promise.all([
+      gpu("zone-urba",geom),gpu("prescription-surf",geom),gpu("assiette-sup-s",geom)
+    ]);
+    render(adr,parcel,zones,prescriptions,sups);
+  }catch(e){
+    document.getElementById("result").innerHTML=`<section class="card"><div class="error"><b>Analyse interrompue :</b> ${esc(e.message)}<br><span class="small">Tu peux aussi saisir directement la référence cadastrale, par exemple AQ 61.</span></div></section>`;
+  }finally{document.getElementById("loading").style.display="none"}
+}
+
+function render(adr,parcel,zones,prescriptions,sups){
+  const p=parcel.properties||{};
+  const section=pick(p,["section","section_cadastrale"])||"—";
+  const number=pick(p,["numero","numero_parcelle"])||"—";
+  const area=pick(p,["contenance","surface"]);
+  const zoneLabels=labels(zones), presLabels=labels(prescriptions), supLabels=labels(sups);
+  const coords=adr.geometry.coordinates;
+
+  document.getElementById("result").innerHTML=`
+  <section class="card">
+    <div class="row"><div><div class="small">Terrain analysé</div><div class="title">${esc(adr.properties.label||"Adresse")}</div></div>${badge("ok")}</div>
+    <p><b>Parcelle identifiée :</b> ${esc(section)} ${esc(number)}</p>
+    <p><b>Surface :</b> ${area?Math.round(area)+" m²":"non fournie"}</p>
+    <div id="map"></div>
+  </section>
+  <section class="card">
+    <div class="title">Urbanisme — GPU</div>
+    <div class="item"><div class="row"><b>Zonage</b>${zoneLabels.length?badge("ok"):badge("warn")}</div><div>${zoneLabels.length?zoneLabels.map(esc).join(" · "):"Aucun zonage retourné."}</div><div class="small">Source : API Carto / Géoportail de l’Urbanisme</div></div>
+    <div class="item"><div class="row"><b>Prescriptions</b>${presLabels.length?badge("warn"):badge("ok")}</div><div>${presLabels.length?presLabels.map(esc).join(" · "):"Aucune prescription surfacique retournée."}</div><div class="small">Source : API Carto / Géoportail de l’Urbanisme</div></div>
+  </section>
+  <section class="card">
+    <div class="title">Servitudes d’utilité publique</div>
+    <div class="item"><div class="row"><b>SUP surfaciques</b>${supLabels.length?badge("danger"):badge("ok")}</div><div>${supLabels.length?supLabels.map(esc).join(" · "):"Aucune SUP surfacique retournée."}</div><div class="small">Source : API Carto / Géoportail de l’Urbanisme</div></div>
+  </section>
+  <section class="card">
+    <div class="title">Étapes suivantes</div>
+    <div class="item">🟠 <b>Géorisques / PPR</b><br><span class="small">Le croisement parcellaire sera ajouté dans la prochaine version.</span></div>
+    <div class="item">🟠 <b>ABF / patrimoine</b><br><span class="small">Le croisement des périmètres patrimoniaux sera ajouté ensuite.</span></div>
+  </section>
+  <section class="card"><div class="success">✅ Adresse → parcelle → géométrie → GPU fonctionne. Les résultats « À vérifier » restent indicatifs.</div></section>
+  <section class="card"><div class="small"><b>Important :</b> pré-diagnostic indicatif. Les documents réglementaires opposables restent la référence.</div></section>`;
+
+  const s=document.createElement("script");
+  s.src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js";
+  s.onload=()=>{
+    const map=L.map("map").setView([coords[1],coords[0]],18);
+    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",{maxZoom:20,attribution:"© OpenStreetMap contributors"}).addTo(map);
+    L.marker([coords[1],coords[0]]).addTo(map);
+    try{const layer=L.geoJSON(parcel,{style:{weight:3,fillOpacity:.2}}).addTo(map);map.fitBounds(layer.getBounds().pad(.25));}catch(e){}
+  };
+  document.body.appendChild(s);
+}
+</script>
+</body>
+</html>
