@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#111827">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon.svg">
+<title>ArchiTerrain</title>
+<style>
+:root{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#111827;background:#f5f6f8}
+*{box-sizing:border-box}body{margin:0}header{padding:22px 18px;background:#111827;color:white}
+main{max-width:760px;margin:auto;padding:18px}.brand{font-size:28px;font-weight:800}.sub{opacity:.75;margin-top:4px}
+.card{background:white;border-radius:18px;padding:18px;margin:14px 0;box-shadow:0 2px 12px #0000000b}
+input{width:100%;padding:14px;border:1px solid #d1d5db;border-radius:12px;font-size:16px;margin:8px 0}
+button{width:100%;border:0;border-radius:12px;padding:14px;background:#111827;color:white;font-weight:700;font-size:16px;margin-top:8px}
+.small{font-size:13px;color:#6b7280}.row{display:flex;justify-content:space-between;gap:12px;align-items:center}.badge{padding:6px 9px;border-radius:999px;font-size:12px;font-weight:700}.ok{background:#dcfce7;color:#166534}.warn{background:#fef3c7;color:#92400e}.danger{background:#fee2e2;color:#991b1b}.unknown{background:#e5e7eb;color:#374151}
+.item{padding:14px 0;border-top:1px solid #eee}.item:first-child{border-top:0}.title{font-weight:750}.source{font-size:12px;color:#6b7280;margin-top:6px}a{color:#2563eb;text-decoration:none}
+#loading{display:none;text-align:center;padding:18px}.mono{font-family:ui-monospace,monospace}
+</style>
+</head>
+<body>
+<header><div class="brand">ArchiTerrain</div><div class="sub">Pré-diagnostic urbanistique</div></header>
+<main>
+<section class="card">
+  <div class="title">Analyser un terrain</div>
+  <div class="small">Adresse ou références cadastrales</div>
+  <input id="address" value="28 boulevard André, 93250 Villemomble" placeholder="Ex. 28 boulevard André, Villemomble">
+  <input id="parcel" placeholder="Optionnel : section et parcelle, ex. AQ 61">
+  <button onclick="analyze()">Analyser le terrain</button>
+  <div id="loading">Analyse en cours…</div>
+</section>
+<div id="result"></div>
+</main>
+<script>
+const demo = {
+ address:"28 boulevard André, 93250 Villemomble",
+ municipality:"Villemomble",
+ parcels:[{section:"AQ",number:"61",area:330}],
+ zoning:{documentName:"PLUi Grand Paris Grand Est",zone:"À déterminer par intersection géographique",publicationDate:"Document en vigueur à vérifier"},
+ constraints:[
+  {title:"PLU / PLUi",status:"warn",detail:"Le PLUi Grand Paris Grand Est est le document à interroger pour déterminer le zonage et les prescriptions applicables à la parcelle.",source:"Géoportail de l’Urbanisme"},
+  {title:"Servitudes d’utilité publique",status:"warn",detail:"Les SUP doivent être intersectées avec la géométrie exacte de la parcelle.",source:"Géoportail de l’Urbanisme"},
+  {title:"PPR mouvements de terrain",status:"warn",detail:"Villemomble est couverte par un PPR mouvements de terrain. La zone réglementaire exacte doit être déterminée à la parcelle.",source:"Géorisques"},
+  {title:"Inondation / PPRI",status:"warn",detail:"À vérifier par croisement géographique avec les données réglementaires.",source:"Géorisques"},
+  {title:"Monuments historiques / ABF",status:"warn",detail:"La présence d’un monument dans la commune ne suffit pas à conclure. Le périmètre de protection doit être intersecté avec AQ 61.",source:"Ministère de la Culture / GPU"}
+ ],
+ sources:[
+  ["Géoportail de l’Urbanisme","https://www.geoportail-urbanisme.gouv.fr/"],
+  ["Géorisques","https://www.georisques.gouv.fr/"],
+  ["API Carto Cadastre IGN","https://www.data.gouv.fr/dataservices/api-carto-module-cadastre"]
+ ]
+};
+
+function badge(status){let t={ok:"OK",warn:"À vérifier",danger:"Contrainte",unknown:"Inconnu"}[status];return `<span class="badge ${status}">${t}</span>`}
+function render(a){
+ document.getElementById("result").innerHTML=`
+ <section class="card"><div class="row"><div><div class="small">Terrain analysé</div><div class="title">${a.address}</div></div>${badge("warn")}</div>
+ <p><b>Parcelle(s)</b></p>${a.parcels.map(p=>`<div class="row"><span class="mono">${p.section} ${p.number}</span><span>${p.area??"—"} m²</span></div>`)}
+ </section>
+ <section class="card"><div class="title">Urbanisme</div><p><b>${a.zoning.documentName}</b></p><p>Zonage : <b>${a.zoning.zone}</b></p><div class="small">La V1 refuse de conclure lorsque la donnée réglementaire précise n’a pas encore été récupérée.</div></section>
+ <section class="card"><div class="title">Contraintes</div>${a.constraints.map(c=>`<div class="item"><div class="row"><span class="title">${c.title}</span>${badge(c.status)}</div><div>${c.detail}</div><div class="source">Source : ${c.source}</div></div>`).join("")}</section>
+ <section class="card"><div class="title">Sources officielles</div>${a.sources.map(s=>`<p><a href="${s[1]}" target="_blank" rel="noopener">${s[0]} ↗</a></p>`).join("")}</section>
+ <section class="card"><div class="small"><b>Important :</b> pré-diagnostic indicatif. Les documents réglementaires opposables restent la référence. Les résultats marqués « À vérifier » ne constituent pas une conclusion réglementaire.</div></section>`;
+}
+async function analyze(){
+ document.getElementById("loading").style.display="block";
+ document.getElementById("result").innerHTML="";
+ // V1: démonstration structurée. V1.1 remplacera ce bloc par l’API backend.
+ await new Promise(r=>setTimeout(r,650));
+ const q=document.getElementById("address").value.trim();
+ const p=document.getElementById("parcel").value.trim();
+ const a=structuredClone(demo);
+ if(q)a.address=q;
+ if(p){
+   const m=p.match(/^([A-Za-z]{1,3})\s*(\d+)$/);
+   if(m)a.parcels=[{section:m[1].toUpperCase(),number:m[2],area:null}];
+ }
+ render(a);
+ document.getElementById("loading").style.display="none";
+}
+</script>
+</body></html>
