@@ -1,0 +1,169 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#111827">
+<link rel="manifest" href="manifest.webmanifest">
+<title>ArchiTerrain V1.2</title>
+<style>
+:root{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#111827;background:#f5f6f8}
+*{box-sizing:border-box}body{margin:0}header{padding:22px 18px;background:#111827;color:#fff}
+main{max-width:820px;margin:auto;padding:18px}.brand{font-size:28px;font-weight:800}.sub{opacity:.75}
+.card{background:#fff;border-radius:18px;padding:18px;margin:14px 0;box-shadow:0 2px 12px #0001}
+input,button{width:100%;padding:14px;border-radius:12px;font-size:16px;margin:7px 0}
+input{border:1px solid #d1d5db}button{border:0;background:#111827;color:#fff;font-weight:700}
+.small{font-size:13px;color:#6b7280}.title{font-weight:750}.item{padding:14px 0;border-top:1px solid #eee}
+.row{display:flex;justify-content:space-between;gap:12px;align-items:center}
+.badge{padding:6px 9px;border-radius:999px;font-size:12px;font-weight:700}
+.ok{background:#dcfce7;color:#166534}.warn{background:#fef3c7;color:#92400e}.danger{background:#fee2e2;color:#991b1b}
+.error{background:#fee2e2;color:#991b1b;padding:12px;border-radius:12px}.success{background:#dcfce7;color:#166534;padding:12px;border-radius:12px}
+#loading{display:none;text-align:center;padding:15px}#map{height:320px;border-radius:14px;margin-top:14px}
+a{color:#2563eb;text-decoration:none}
+</style>
+</head>
+<body>
+<header><div class="brand">ArchiTerrain</div><div class="sub">Pré-diagnostic urbanistique · V1.2</div></header>
+<main>
+<section class="card">
+<div class="title">Analyser un terrain</div>
+<div class="small">Adresse ou références cadastrales</div>
+<input id="address" value="28 boulevard André, 93250 Villemomble" placeholder="Ex. 28 boulevard André, Villemomble">
+<input id="parcel" placeholder="Optionnel : section + parcelle, ex. AQ 61">
+<button onclick="analyze()">Analyser le terrain</button>
+<div id="loading">⏳ Interrogation des données officielles…</div>
+</section>
+<div id="result"></div>
+</main>
+<script>
+const CARTO="https://apicarto.ign.fr/api";
+const BAN="https://api-adresse.data.gouv.fr/search/";
+
+async function json(url){
+  const r=await fetch(url);
+  if(!r.ok) throw new Error("Service indisponible ("+r.status+")");
+  return r.json();
+}
+function esc(v){return String(v??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]))}
+function badge(s){return `<span class="badge ${s}">${s==="ok"?"Vérifié":s==="danger"?"Contrainte":"À vérifier"}</span>`}
+
+async function geocode(address){
+  const j=await json(BAN+"?q="+encodeURIComponent(address)+"&limit=1");
+  if(!j.features?.length) throw new Error("Adresse introuvable.");
+  return j.features[0];
+}
+
+async function parcelFromPoint(coords){
+  const geom=encodeURIComponent(JSON.stringify({type:"Point",coordinates:coords}));
+  const j=await json(CARTO+"/cadastre/parcelle?geom="+geom+"&source_ign=PCI");
+  if(!j.features?.length) throw new Error("Aucune parcelle trouvée à cette adresse.");
+  return j.features[0];
+}
+
+async function gpu(path,geom){
+  const u=CARTO+"/gpu/"+path+"?geom="+encodeURIComponent(JSON.stringify(geom));
+  try{return await json(u)}catch(e){return {features:[],error:e.message}}
+}
+
+function props(f){return f?.properties||{}}
+function pick(p,keys){
+  for(const k of keys) if(p[k]!==undefined && p[k]!==null && p[k]!=="") return p[k];
+  return null;
+}
+function labels(fc){
+  return [...new Set((fc?.features||[]).map(f=>{
+    const p=props(f);
+    return pick(p,["libelle","libelle_zone","libelle_long","nom","nom_zone","typezone","libelle_acte","categorie","libelle_sup","id"]);
+  }).filter(Boolean))];
+}
+
+async function analyze(){
+  const address=document.getElementById("address").value.trim();
+  document.getElementById("loading").style.display="block";
+  document.getElementById("result").innerHTML="";
+  try{
+    const adr=await geocode(address);
+    const parcel=await parcelFromPoint(adr.geometry.coordinates);
+    const geom=parcel.geometry;
+    const [zones,prescriptions,sups]=await Promise.all([
+      gpu("zone-urba",geom),
+      gpu("prescription-surf",geom),
+      gpu("assiette-sup-s",geom)
+    ]);
+    const p=props(parcel);
+    const zoneLabels=labels(zones), prescriptionLabels=labels(prescriptions), supLabels=labels(sups);
+    const section=pick(p,["section","section_cadastrale"])||"—";
+    const number=pick(p,["numero","numero_parcelle"])||"—";
+    const area=pick(p,["contenance","surface"]);
+
+    document.getElementById("result").innerHTML=`
+      <section class="card">
+        <div class="row"><div><div class="small">Adresse</div><div class="title">${esc(adr.properties.label||address)}</div></div>${badge("ok")}</div>
+        <p><b>Parcelle :</b> ${esc(section)} ${esc(number)}</p>
+        <p><b>Surface :</b> ${area?Math.round(area)+" m²":"non fournie par le service"}</p>
+        <div id="map"></div>
+      </section>
+
+      <section class="card">
+        <div class="title">Urbanisme — GPU</div>
+        <div class="item">
+          <div class="row"><b>Zonage</b>${zoneLabels.length?badge("ok"):badge("warn")}</div>
+          <div>${zoneLabels.length?zoneLabels.map(esc).join(" · "):"Aucun zonage retourné par l’API pour cette géométrie."}</div>
+          <div class="small">Source : API Carto / Géoportail de l’Urbanisme</div>
+        </div>
+        <div class="item">
+          <div class="row"><b>Prescriptions surfaciques</b>${prescriptionLabels.length?badge("warn"):badge("ok")}</div>
+          <div>${prescriptionLabels.length?prescriptionLabels.map(esc).join(" · "):"Aucune prescription surfacique retournée."}</div>
+          <div class="small">Source : API Carto / Géoportail de l’Urbanisme</div>
+        </div>
+      </section>
+
+      <section class="card">
+        <div class="title">Servitudes d’utilité publique</div>
+        <div class="item">
+          <div class="row"><b>SUP surfaciques</b>${supLabels.length?badge("danger"):badge("ok")}</div>
+          <div>${supLabels.length?supLabels.map(esc).join(" · "):"Aucune SUP surfacique retournée par cette interrogation."}</div>
+          <div class="small">Source : API Carto / Géoportail de l’Urbanisme</div>
+        </div>
+      </section>
+
+      <section class="card">
+        <div class="title">Risques & patrimoine</div>
+        <div class="item"><div class="row"><b>Géorisques / PPR</b>${badge("warn")}</div>
+        <div>Cette V1.2 identifie la parcelle et les données GPU. Le croisement parcellaire Géorisques sera ajouté à la prochaine étape.</div>
+        <div class="small">Source : Géorisques</div></div>
+        <div class="item"><div class="row"><b>ABF / patrimoine</b>${badge("warn")}</div>
+        <div>Le périmètre patrimonial doit être intersecté avant de conclure à une consultation ABF.</div>
+        <div class="small">Source : Ministère de la Culture / GPU</div></div>
+      </section>
+
+      <section class="card"><div class="success">✅ Adresse et parcelle récupérées automatiquement. Le zonage, les prescriptions et les SUP sont interrogés à partir de la géométrie cadastrale.</div></section>
+
+      <section class="card">
+        <div class="title">Sources</div>
+        <p><a href="https://www.geoportail-urbanisme.gouv.fr/" target="_blank">Géoportail de l’Urbanisme ↗</a></p>
+        <p><a href="https://apicarto.ign.fr/api/doc/cadastre" target="_blank">API Carto Cadastre IGN ↗</a></p>
+        <p><a href="https://apicarto.ign.fr/api/doc/gpu" target="_blank">API Carto GPU ↗</a></p>
+        <p><a href="https://www.georisques.gouv.fr/" target="_blank">Géorisques ↗</a></p>
+      </section>
+
+      <section class="card"><div class="small"><b>Important :</b> pré-diagnostic indicatif. Les documents réglementaires opposables restent la référence. Une information « À vérifier » n’est pas une conclusion réglementaire.</div></section>
+    `;
+
+    const s=adr.geometry.coordinates;
+    const script=document.createElement("script");
+    script.src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js";
+    script.onload=()=>{
+      const map=L.map("map").setView([s[1],s[0]],18);
+      L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",{maxZoom:20,attribution:"© OpenStreetMap contributors"}).addTo(map);
+      L.marker([s[1],s[0]]).addTo(map);
+      try{const layer=L.geoJSON(parcel,{style:{weight:3,fillOpacity:.2}}).addTo(map);map.fitBounds(layer.getBounds().pad(.25));}catch(e){}
+    };
+    document.body.appendChild(script);
+  }catch(e){
+    document.getElementById("result").innerHTML=`<section class="card"><div class="error"><b>Analyse interrompue :</b> ${esc(e.message)}</div></section>`;
+  }finally{document.getElementById("loading").style.display="none"}
+}
+</script>
+</body>
+</html>
