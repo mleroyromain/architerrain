@@ -1,6 +1,6 @@
 <!doctype html>
 <html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<meta name="theme-color" content="#111827"><title>ArchiTerrain V4.6</title>
+<meta name="theme-color" content="#111827"><title>ArchiTerrain V4.7</title>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 <style>
 :root{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#111827;background:#f4f6f8}
@@ -74,8 +74,18 @@ details{margin-top:8px}summary{color:#2563eb;cursor:pointer}.check{display:grid;
 .prescard.green{border-left:5px solid #22c55e}.prescard.amber{border-left:5px solid #f59e0b}.prescard.red{border-left:5px solid #ef4444}.prescard.blue{border-left:5px solid #2563eb}
 .techdetails{margin-top:9px;font-size:12px;color:#64748b}
 .techdetails summary{cursor:pointer;color:#475569;font-weight:700}
+
+.reggrid{display:grid;gap:10px;margin-top:10px}
+.reggroup{border:1px solid #dbe3ef;border-radius:14px;padding:14px;background:#fff}
+.reggroup h3{margin:0;font-size:17px}.reggroup .count{float:right;border-radius:999px;padding:5px 9px;background:#eef2ff;color:#3730a3;font-size:12px;font-weight:800}
+.regitem{padding:10px 0;border-top:1px solid #eef2f7}.regitem:first-child{border-top:0}
+.regitem .name{font-weight:800}.regitem .desc{font-size:13px;color:#475569;line-height:1.4;margin-top:3px}.regitem .src{font-size:12px;color:#64748b;margin-top:5px}
+.regitem details{font-size:12px;color:#64748b;margin-top:5px}.regitem summary{cursor:pointer;font-weight:700}
+.audit{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px}
+.audit .metric{min-height:0}
+@media(max-width:650px){.audit{grid-template-columns:1fr}}
 </style></head><body>
-<header><div class="brand">ArchiTerrain</div><div class="sub">Pré-diagnostic urbanistique · V4.6 — lecture prescriptions</div></header>
+<header><div class="brand">ArchiTerrain</div><div class="sub">Pré-diagnostic urbanistique · V4.7 — restitution réglementaire exhaustive</div></header>
 <main>
 <section class="card"><div class="title">1 · Identifier le terrain</div>
 <div class="small">Adresse + références cadastrales facultatives</div>
@@ -291,21 +301,6 @@ function rules(pres){
  return cleanPrescriptionCards(pres);
 }
 
-function projectContext(){
- return `<section class="card"><div class="title">Paramètres qui débloquent les règles</div>
- <div class="grid">
-  <div class="metric"><span class="small">Projet</span><b id="ctx-type">Construction neuve</b></div>
-  <div class="metric"><span class="small">Hauteur</span><b id="ctx-height">Non renseignée</b></div>
-  <div class="metric"><span class="small">Baies</span><b id="ctx-openings">À qualifier</b></div>
-  <div class="metric"><span class="small">Existant</span><b id="ctx-existing">Non renseigné</b></div>
- </div>
- <div class="notice" style="margin-top:10px">Ces paramètres ne modifient pas le règlement. Ils servent à choisir la branche applicable quand le règlement prévoit plusieurs cas.</div>
- </section>`;
-}
-
-function projectForm(){return `<section class="card"><div class="title">3 · Paramètres du projet</div><div class="small">Ces paramètres servent à sélectionner la bonne branche réglementaire. Aucun chiffre n’est inventé lorsqu’un paramètre manque.</div><div class="grid"><div><label class="small">Type</label><select id="ptype"><option>Construction neuve</option><option>Extension</option><option>Annexe</option><option>Réhabilitation</option></select></div><div><label class="small">Hauteur envisagée</label><input id="height" placeholder="ex. 7,50 m"></div></div><div class="grid"><div><label class="small">Façade concernée</label><select id="facade"><option>Avec baie / ouverture</option><option>Sans baie / façade aveugle</option><option>Je ne sais pas</option></select></div><div><label class="small">Bâtiment existant conservé</label><select id="existing"><option>Non</option><option>Oui</option><option>Je ne sais pas</option></select></div></div><button onclick="applyProject()">Appliquer aux règles</button><div id="projectMsg"></div></section>`}
-
-
 
 // V4.5.1: safe regulation-text cache. Never let the rule tree break terrain identification.
 let localRegulation = {pages:[]};
@@ -360,33 +355,73 @@ function regulatorySummary(){
  </table></div></section>`;
 }
 
+
+const REG_LAYERS=[
+ ["zone-urba","Zonage","Règle de zonage applicable à la parcelle."],
+ ["prescription-surf","Prescriptions surfaciques","Prescriptions graphiques qui intersectent le terrain."],
+ ["prescription-lin","Prescriptions linéaires","Prescriptions portées par des lignes."],
+ ["prescription-pct","Prescriptions ponctuelles","Prescriptions localisées ponctuellement."],
+ ["info-surf","Informations surfaciques","Périmètres d'information à prendre en compte."],
+ ["info-lin","Informations linéaires","Informations portées par des lignes."],
+ ["info-pct","Informations ponctuelles","Informations localisées ponctuellement."],
+ ["assiette-sup-s","Servitudes surfaciques","Emprises surfaciques des servitudes d'utilité publique."],
+ ["assiette-sup-l","Servitudes linéaires","Emprises linéaires des servitudes d'utilité publique."],
+ ["assiette-sup-p","Servitudes ponctuelles","Emprises ponctuelles des servitudes d'utilité publique."],
+ ["acte-sup","Actes de SUP","Informations sur les actes des servitudes d'utilité publique."],
+ ["document","Document d'urbanisme","Document(s) d'urbanisme intersectant la géométrie."]
+];
+function humanReg(p){
+ const label=prescriptionLabel(p)||pick(p,["nom","libelle","libelle_long","titre","nature","typezone","libelle_zone"])||"Objet réglementaire";
+ const val=pick(p,["lib_val1","lib_val2","valeur","valeur1"]);
+ return {label,value:val,code:[p.typepsc,p.stypepsc].filter(Boolean).join("-"),tech:prescriptionTechnical(p)};
+}
+function regGroup(layer,fc){
+ const meta=REG_LAYERS.find(x=>x[0]===layer)||[layer,layer,""];
+ const fs=fc?.features||[];
+ if(!fs.length)return `<div class="reggroup"><h3>${esc(meta[1])}<span class="count">0</span></h3><div class="small">Aucun objet intersectant retourné par l'API.</div></div>`;
+ const seen=new Set(),items=[];
+ for(const f of fs){
+  const h=humanReg(f.properties||{}), key=(h.label+"|"+h.value+"|"+h.code).toLowerCase();
+  if(seen.has(key))continue;seen.add(key);
+  items.push(`<div class="regitem"><div class="name">${esc(h.label)}</div>${h.value?`<div class="desc"><b>Valeur :</b> ${esc(h.value)}</div>`:""}${h.code?`<div class="src">Classification CNIG : ${esc(h.code)}</div>`:""}<div class="src">${esc(meta[2])}</div>${h.tech?`<details><summary>Voir la preuve technique</summary><div style="margin-top:5px">${esc(h.tech)}</div></details>`:""}</div>`);
+ }
+ return `<div class="reggroup"><h3>${esc(meta[1])}<span class="count">${items.length}</span></h3>${items.join("")}</div>`;
+}
+function exhaustiveRegulationReport(data){
+ const total=Object.values(data).reduce((n,fc)=>n+(fc?.features?.length||0),0);
+ const active=Object.entries(data).filter(([k,fc])=>(fc?.features?.length||0)>0);
+ return `<section class="card"><div class="title">2 · Analyse réglementaire exhaustive</div>
+ <div class="small">Inventaire de toutes les familles GPU interrogées sur l'emprise sélectionnée. Les métadonnées techniques sont masquées par défaut ; aucun objet intersectant n'est silencieusement écarté.</div>
+ <div class="audit"><div class="metric"><span class="small">Familles interrogées</span><b>${REG_LAYERS.length}</b></div><div class="metric"><span class="small">Objets retournés</span><b>${total}</b></div></div>
+ <div class="reggrid">${REG_LAYERS.map(([k])=>regGroup(k,data[k])).join("")}</div>
+ <div class="notice" style="margin-top:10px"><b>Principe de fiabilité :</b> un objet GPU est présenté comme une donnée intersectante, pas automatiquement comme une règle de construction. La portée juridique est ensuite reliée au règlement écrit, au document graphique ou à l'acte correspondant.</div>
+ </section>`;
+}
+
 async function analyze(){
  if(!S.sel.length)return alert("Sélectionne au moins une parcelle");
- document.getElementById("status").innerHTML='<div class="notice">Analyse géographique des données officielles…</div>';
+ document.getElementById("status").innerHTML='<div class="notice">Analyse réglementaire exhaustive des données officielles…</div>';
  try{
   let selected=S.sel.map(i=>S.parcels[i]),u=site();
-  let [zones,pres,sups]=await Promise.all([gpu("zone-urba",u.geometry),gpu("prescription-surf",u.geometry),gpu("assiette-sup-s",u.geometry)]);
+  const results=await Promise.all(REG_LAYERS.map(async ([layer])=>[layer,await gpu(layer,u.geometry)]));
+  const data=Object.fromEntries(results);
+  const zones=data["zone-urba"];
   document.getElementById("status").innerHTML="";
-  document.getElementById("app").innerHTML=`<section class="card"><div class="row"><div><div class="small">Dossier</div><div class="title">${esc(S.adr.properties.label)}</div></div><span class="badge ok">Parcelle identifiée</span></div><div class="grid"><div class="metric"><span class="small">Parcelles</span><b>${selected.length}</b></div><div class="metric"><span class="small">Surface cumulée</span><b>${Math.round(selected.reduce((a,f)=>a+area(f),0))} m²</b></div></div><div id="map"></div></section>
-<section class="card"><div class="title">Composition foncière</div>${selected.map(f=>`<div class="check"><span><b>${esc(label(f))}</b><br><span class="small">Parcelle cadastrale · ${area(f)?Math.round(area(f))+" m²":"surface non fournie"}</span></span><span class="badge blue">Sélectionnée</span></div>`).join("")}</section>
-<section class="card"><div class="title">Urbanisme applicable</div><div class="rule"><strong>Zonage</strong><div>${zoneName(zones).map(esc).join(" · ")||"Zonage non retourné"}</div><div class="source">Source : API Carto / GPU</div></div>${officialDoc()}${officialDocumentCard()}</section>
-${rules(pres)}${regulatorySummary()}<section class="card"><div class="title">7 · Arbre de décision du règlement</div><div class="small">Le texte réglementaire est présenté comme une suite de branches, sans inventer de valeur lorsque les conditions ne sont pas établies.</div>${(()=>{try{return ruleTreeFromText()}catch(e){return '<div class="notice">Lecture automatique du règlement indisponible pour cette analyse. Les données cadastrales et GPU restent consultables.</div>'}})()}</section>
-<section class="card"><div class="title">Servitudes d’utilité publique</div>${side("SUP intersectantes",vals(sups))}</section>
-${boundaryModel()}${projectForm()}
-<section class="card"><div class="title">5 · Synthèse fiable</div><div class="dangerline"><b>Établi</b><p>Parcelles, géométrie, zonage et intersections réellement retournées par les services officiels.</p></div><div class="okline"><b>Calculable ensuite</b><p>Une prescription côté par côté lorsque la géométrie et le texte réglementaire fournissent les éléments nécessaires.</p></div><div class="notice"><b>Règle V4.3 :</b> aucune distance, hauteur ou règle de prospect n’est présentée comme applicable sans preuve documentaire. Le moteur distingue désormais « prescription géographique trouvée » et « règle du règlement écrit à appliquer ».</div></section>`;
+  document.getElementById("app").innerHTML=
+ `<section class="card"><div class="row"><div><div class="small">Dossier</div><div class="title">${esc(S.adr.properties.label)}</div></div><span class="badge ok">Terrain identifié</span></div>
+ <div class="grid"><div class="metric"><span class="small">Parcelles</span><b>${selected.length}</b></div><div class="metric"><span class="small">Surface cumulée</span><b>${Math.round(selected.reduce((a,f)=>a+area(f),0))} m²</b></div></div><div id="map"></div></section>
+ <section class="card"><div class="title">1 · Périmètre étudié</div>${selected.map(f=>`<div class="check"><span><b>${esc(label(f))}</b><br><span class="small">${area(f)?Math.round(area(f))+" m²":"surface non fournie"}</span></span><span class="badge blue">Incluse</span></div>`).join("")}</section>
+ ${exhaustiveRegulationReport(data)}
+ <section class="card"><div class="title">3 · Zonage et document applicable</div><div class="rule"><strong>Zonage</strong><div>${zoneName(zones).map(esc).join(" · ")||"Zonage non retourné"}</div><div class="source">Source : API Carto / Géoportail de l'Urbanisme</div></div>${officialDoc()}${officialDocumentCard()}</section>
+ ${cleanPrescriptionCards(data["prescription-surf"])}
+ <section class="card"><div class="title">4 · Servitudes d'utilité publique</div>${side("SUP surfaciques",vals(data["assiette-sup-s"]))}${side("SUP linéaires",vals(data["assiette-sup-l"]))}${side("SUP ponctuelles",vals(data["assiette-sup-p"]))}</section>
+ ${boundaryModel()}
+ <section class="card"><div class="title">5 · Synthèse de fiabilité</div><div class="okline"><b>Données exhaustives</b><p>Les familles GPU disponibles sont interrogées sur l'emprise du terrain et leurs résultats sont restitués par catégorie.</p></div><div class="notice"><b>Limite volontaire :</b> ArchiTerrain ne transforme pas encore automatiquement chaque objet en règle de distance ou de prospect. La prochaine étape sera de relier chaque objet pertinent au passage exact du règlement écrit et à sa page.</div></section>`;
   buildMap(u,selected);
-  runSideMapping(u,pres);
+  runSideMapping(u,data["prescription-surf"]);
  }catch(e){document.getElementById("status").innerHTML='<div class="error">'+esc(e.message)+"</div>"}
 }
-function applyProject(){
- const type=document.getElementById("ptype")?.value||"—",height=document.getElementById("height")?.value||"Non renseignée",
- facade=document.getElementById("facade")?.value||"À qualifier",existing=document.getElementById("existing")?.value||"Non renseigné";
- document.getElementById("ctx-type").textContent=type;
- document.getElementById("ctx-height").textContent=height;
- document.getElementById("ctx-openings").textContent=facade;
- document.getElementById("ctx-existing").textContent=existing;
- document.getElementById("projectMsg").innerHTML='<div class="notice">Paramètres enregistrés : les branches conditionnelles peuvent maintenant être sélectionnées.</div>';
-}
+
 
 document.addEventListener("DOMContentLoaded",()=>{
  const b=document.getElementById("identify-btn");
