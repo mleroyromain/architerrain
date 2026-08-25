@@ -1,6 +1,6 @@
 <!doctype html>
 <html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<meta name="theme-color" content="#111827"><title>ArchiTerrain V5.4.1</title>
+<meta name="theme-color" content="#111827"><title>ArchiTerrain V5.4.2</title>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <style>
@@ -731,12 +731,12 @@ function v54FindZoneBlock(){
 }
 function v54Article(block, n){
  const rx=new RegExp(`(?:ARTICLE|Article)\\s*${n}[^]*?(?=(?:ARTICLE|Article)\\s*\\d+\\b|$)`,"i");
- const m=block.text.match(rx);
+ const m=String(block && block.text != null ? block.text : '').match(rx);
  return m?m[0].replace(/\s+/g," ").trim():null;
 }
 function v54Clause(block, patterns){
  for(const rx of patterns){
-  const m=block.text.match(rx);
+  const m=String(block && block.text != null ? block.text : '').match(rx);
   if(m)return m[0].replace(/\s+/g," ").trim().slice(0,1800);
  }
  return null;
@@ -745,7 +745,7 @@ function v54Numbers(text){
  return [...(text||"").matchAll(/(\d+(?:[.,]\d+)?)\s*(mètres?|m\b|%)/gi)].map(m=>m[1].replace(",",".")+(m[2].toLowerCase().startsWith("m")?" m":" %"));
 }
 function v54Rule(num,title,article,patterns,mode="text"){
- const clause=v54Clause(article?{text:article}:zoneBlock,patterns);
+ const clause=v54Clause(article ? String(article) : zoneBlock,patterns);
  if(!clause)return {num,title,value:"Non déterminé",status:"Non établi",tone:"warn",cond:"Aucune clause suffisamment précise n’a été extraite de la partie UC du règlement officiel.",ref:"Règlement écrit — zone UC"};
  const nums=v54Numbers(clause);
  let value=nums.length?nums.slice(0,4).join(" · "):"Clause identifiée";
