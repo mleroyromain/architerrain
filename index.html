@@ -1,6 +1,6 @@
 <!doctype html>
 <html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<meta name="theme-color" content="#111827"><title>ArchiTerrain V4.7</title>
+<meta name="theme-color" content="#111827"><title>ArchiTerrain V4.9</title>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 <style>
 :root{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#111827;background:#f4f6f8}
@@ -84,8 +84,27 @@ details{margin-top:8px}summary{color:#2563eb;cursor:pointer}.check{display:grid;
 .audit{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px}
 .audit .metric{min-height:0}
 @media(max-width:650px){.audit{grid-template-columns:1fr}}
+
+.summaryhero{background:#f8fafc;border:1px solid #dbe3ef;border-radius:16px;padding:14px;margin-top:10px}
+.summaryhero .big{font-size:22px;font-weight:900}.summaryhero .sub{color:#64748b;margin-top:4px}
+.matrix{display:grid;gap:8px;margin-top:10px}
+.matrixrow{display:grid;grid-template-columns:150px 1fr auto;gap:10px;align-items:start;padding:11px;border:1px solid #e5e7eb;border-radius:12px;background:#fff}
+.matrixrow .cat{font-weight:850}.matrixrow .rule{font-weight:750}.matrixrow .source{font-size:12px;color:#64748b;margin-top:3px}.matrixrow .badge{white-space:nowrap}
+@media(max-width:650px){.matrixrow{grid-template-columns:1fr}.matrixrow .badge{justify-self:start}}
+
+.regorder{display:grid;gap:10px;margin-top:10px}
+.regsection{border:1px solid #dbe3ef;border-radius:16px;background:#fff;overflow:hidden}
+.regsection .head{padding:13px 14px;background:#f8fafc;display:flex;gap:10px;align-items:center}
+.regsection .num{width:30px;height:30px;border-radius:50%;display:grid;place-items:center;background:#111827;color:#fff;font-weight:900;flex:none}
+.regsection .title{font-size:17px;font-weight:900}
+.regsection .body{padding:14px}
+.regline{display:grid;grid-template-columns:1fr auto;gap:10px;padding:9px 0;border-bottom:1px solid #eef2f7}
+.regline:last-child{border-bottom:0}
+.regline .label{font-weight:800}.regline .desc{font-size:13px;color:#475569;line-height:1.4;margin-top:3px}
+.state{padding:5px 9px;border-radius:999px;font-size:11px;font-weight:850;white-space:nowrap;background:#eef2ff;color:#3730a3}
+.state.ok{background:#dcfce7;color:#166534}.state.warn{background:#fef3c7;color:#92400e}.state.none{background:#f1f5f9;color:#475569}
 </style></head><body>
-<header><div class="brand">ArchiTerrain</div><div class="sub">Pré-diagnostic urbanistique · V4.7 — restitution réglementaire exhaustive</div></header>
+<header><div class="brand">ArchiTerrain</div><div class="sub">Pré-diagnostic urbanistique · V4.9 — restitution structurée</div></header>
 <main>
 <section class="card"><div class="title">1 · Identifier le terrain</div>
 <div class="small">Adresse + références cadastrales facultatives</div>
@@ -387,14 +406,113 @@ function regGroup(layer,fc){
  }
  return `<div class="reggroup"><h3>${esc(meta[1])}<span class="count">${items.length}</span></h3>${items.join("")}</div>`;
 }
+
+function compactText(p){
+ const h=humanReg(p);
+ return {label:h.label, value:h.value, code:h.code, tech:h.tech};
+}
+function familySummary(data){
+ const groups=[];
+ const add=(layer,title,kind)=>{
+  const fs=data[layer]?.features||[];
+  if(!fs.length)return;
+  const seen=new Set(), items=[];
+  for(const f of fs){
+   const h=compactText(f.properties||{}), key=(h.label+"|"+h.value+"|"+h.code).toLowerCase();
+   if(seen.has(key))continue; seen.add(key); items.push(h);
+  }
+  groups.push({title,kind,items});
+ };
+ add("zone-urba","Zonage","zone");
+ add("prescription-surf","Prescriptions graphiques","pres");
+ add("prescription-lin","Prescriptions linéaires","pres");
+ add("prescription-pct","Prescriptions ponctuelles","pres");
+ add("info-surf","Informations à prendre en compte","info");
+ add("info-lin","Informations linéaires","info");
+ add("info-pct","Informations ponctuelles","info");
+ add("assiette-sup-s","Servitudes d’utilité publique","sup");
+ add("assiette-sup-l","Servitudes linéaires","sup");
+ add("assiette-sup-p","Servitudes ponctuelles","sup");
+ add("acte-sup","Actes de servitudes","acte");
+ return groups;
+}
 function exhaustiveRegulationReport(data){
- const total=Object.values(data).reduce((n,fc)=>n+(fc?.features?.length||0),0);
- const active=Object.entries(data).filter(([k,fc])=>(fc?.features?.length||0)>0);
- return `<section class="card"><div class="title">2 · Analyse réglementaire exhaustive</div>
- <div class="small">Inventaire de toutes les familles GPU interrogées sur l'emprise sélectionnée. Les métadonnées techniques sont masquées par défaut ; aucun objet intersectant n'est silencieusement écarté.</div>
- <div class="audit"><div class="metric"><span class="small">Familles interrogées</span><b>${REG_LAYERS.length}</b></div><div class="metric"><span class="small">Objets retournés</span><b>${total}</b></div></div>
- <div class="reggrid">${REG_LAYERS.map(([k])=>regGroup(k,data[k])).join("")}</div>
- <div class="notice" style="margin-top:10px"><b>Principe de fiabilité :</b> un objet GPU est présenté comme une donnée intersectante, pas automatiquement comme une règle de construction. La portée juridique est ensuite reliée au règlement écrit, au document graphique ou à l'acte correspondant.</div>
+ const groups=familySummary(data);
+ const total=groups.reduce((n,g)=>n+g.items.length,0);
+ const row=[];
+ for(const g of groups){
+  for(const h of g.items){
+   let badge="À qualifier", tone="cond";
+   if(g.kind==="zone"){badge="Règle de zone";tone="est"}
+   else if(g.kind==="sup"){badge="Servitude";tone="cond"}
+   else if(g.kind==="info"){badge="Information";tone="cond"}
+   else if(g.kind==="pres"){badge="Prescription";tone="cond"}
+   else if(g.kind==="acte"){badge="Acte";tone="cond"}
+   row.push(`<div class="matrixrow"><div class="cat">${esc(g.title)}</div><div><div class="rule">${esc(h.label)}</div>${h.value?`<div class="source"><b>Valeur :</b> ${esc(h.value)}</div>`:""}${h.code?`<div class="source">Code : ${esc(h.code)}</div>`:""}</div><span class="badge ${tone}">${badge}</span></div>`);
+  }
+ }
+ return `<section class="card"><div class="title">2 · Synthèse réglementaire</div>
+ <div class="summaryhero"><div class="big">${total} élément${total>1?"s":""} réglementaire${total>1?"s":""} identifié${total>1?"s":""}</div><div class="sub">Lecture unique, sans répétition des métadonnées techniques. Les preuves détaillées restent accessibles dans les sections correspondantes.</div></div>
+ <div class="matrix">${row.length?row.join(""):`<div class="notice">Aucun objet réglementaire intersectant n'a été retourné par les couches interrogées.</div>`}</div>
+ <div class="notice" style="margin-top:10px"><b>Important :</b> « prescription », « information » et « servitude » sont des données de nature différente. Leur présence sur la parcelle ne signifie pas automatiquement qu'une distance de construction ou une interdiction s'applique. La règle juridique sera établie dans l'étape suivante à partir du document source.</div>
+ </section>`;
+}
+
+
+function allFeatures(data, layers){
+ const out=[];
+ for(const layer of layers){
+  for(const f of data[layer]?.features||[]) out.push({layer, p:f.properties||{}});
+ }
+ return out;
+}
+function firstBy(rx, arr){
+ for(const x of arr){
+  const txt=[x.p.libelle,x.p.libelle_long,x.p.lib_val1,x.p.lib_val2,x.p.valeur,x.p.valeur1,x.p.typezone].filter(Boolean).join(" ");
+  if(rx.test(txt)) return x;
+ }
+ return null;
+}
+function regValue(x){
+ if(!x)return "";
+ return pick(x.p,["lib_val1","lib_val2","valeur","valeur1"])||"";
+}
+function orderedRegulation(data){
+ const pres=allFeatures(data,["prescription-surf","prescription-lin","prescription-pct"]);
+ const info=allFeatures(data,["info-surf","info-lin","info-pct"]);
+ const sup=allFeatures(data,["assiette-sup-s","assiette-sup-l","assiette-sup-p"]);
+ const zones=data["zone-urba"]?.features||[];
+ const sections=[
+  ["1","Zone réglementaire", zones.length?`Zone ${zoneName(data["zone-urba"]).join(" · ")}`:"Zone non retournée", zones.length?"Règle de zone":"Non déterminé","ok"],
+  ["2","Implantation par rapport à l’espace public", firstBy(/voie|emprise publique|alignement|retrait/i,pres), "Prescription / règle à qualifier","warn"],
+  ["3","Implantation par rapport aux limites", firstBy(/limite séparative|séparative|fond de parcelle|limite de propriété/i,pres), "Règle à établir depuis le règlement écrit","warn"],
+  ["4","Implantation entre bâtiments sur une même parcelle", firstBy(/même propriété|même parcelle|entre constructions|entre bâtiments|construction.*construction/i,pres), "Règle à établir depuis le règlement écrit","warn"],
+  ["5","Emprise au sol autorisée", firstBy(/emprise au sol|coefficient d.?emprise|CES/i,pres), "Valeur à établir depuis le règlement écrit","warn"],
+  ["6","Hauteur autorisée", firstBy(/hauteur|faîtage|égout|acrotère/i,pres), "Valeur à établir depuis le règlement écrit","warn"],
+  ["7","Espaces verts / pleine terre", firstBy(/espace[s]? vert|pleine terre|végétalis|plantation/i,pres), "Règle à établir depuis le règlement écrit","warn"],
+  ["8","Stationnement", firstBy(/stationnement|parking|place[s]? de stationnement/i,pres), "Règle à établir depuis le règlement écrit","warn"],
+ ];
+ const extra=[];
+ if(pres.length) extra.push(["P","Autres prescriptions graphiques",`${pres.length} objet(s) intersectant(s)`, "À qualifier", "warn"]);
+ if(sup.length) extra.push(["S","Servitudes d’utilité publique",`${sup.length} objet(s) intersectant(s)`, "À examiner", "warn"]);
+ if(info.length) extra.push(["I","Informations / risques / contraintes",`${info.length} objet(s) intersectant(s)`, "À examiner", "warn"]);
+ return [...sections,...extra];
+}
+function renderOrderedRegulation(data){
+ const sections=orderedRegulation(data);
+ return `<section class="card"><div class="title">2 · Synthèse réglementaire — lecture architecte</div>
+ <div class="small">Ordre de lecture fixé pour le pré-diagnostic. Une rubrique est considérée comme « établie » uniquement lorsque la donnée et sa portée sont démontrées. Les autres restent identifiées mais non interprétées.</div>
+ <div class="regorder">${sections.map(s=>{
+  const [num,title,obj,status,tone]=s;
+  let desc="";
+  if(typeof obj==="string") desc=obj;
+  else if(obj) {
+    const h=humanReg(obj.p);
+    desc=(h.value?`Valeur détectée : ${h.value}. `:"")+`Objet graphique intersectant : ${h.label}. La portée exacte doit être reliée au règlement écrit.`;
+  } else desc="Aucune donnée graphique spécifique retournée dans cette famille. Le règlement écrit reste la source de référence.";
+  return `<div class="regsection"><div class="head"><div class="num">${esc(num)}</div><div class="title">${esc(title)}</div></div><div class="body"><div class="regline"><div><div class="label">${esc(typeof obj==="string"?obj:(obj?humanReg(obj.p).label:"Aucune donnée graphique spécifique"))}</div><div class="desc">${esc(desc)}</div></div><span class="state ${tone}">${esc(status)}</span></div></div></div>`;
+ }).join("")}</div>
+ <div class="notice" style="margin-top:10px"><b>Règle de restitution :</b> les huit rubriques principales restent toujours dans le même ordre. Les servitudes, risques, patrimoine, réseaux et autres contraintes viennent ensuite, regroupés sans répéter les mêmes données.</div>
  </section>`;
 }
 
@@ -411,12 +529,11 @@ async function analyze(){
  `<section class="card"><div class="row"><div><div class="small">Dossier</div><div class="title">${esc(S.adr.properties.label)}</div></div><span class="badge ok">Terrain identifié</span></div>
  <div class="grid"><div class="metric"><span class="small">Parcelles</span><b>${selected.length}</b></div><div class="metric"><span class="small">Surface cumulée</span><b>${Math.round(selected.reduce((a,f)=>a+area(f),0))} m²</b></div></div><div id="map"></div></section>
  <section class="card"><div class="title">1 · Périmètre étudié</div>${selected.map(f=>`<div class="check"><span><b>${esc(label(f))}</b><br><span class="small">${area(f)?Math.round(area(f))+" m²":"surface non fournie"}</span></span><span class="badge blue">Incluse</span></div>`).join("")}</section>
- ${exhaustiveRegulationReport(data)}
- <section class="card"><div class="title">3 · Zonage et document applicable</div><div class="rule"><strong>Zonage</strong><div>${zoneName(zones).map(esc).join(" · ")||"Zonage non retourné"}</div><div class="source">Source : API Carto / Géoportail de l'Urbanisme</div></div>${officialDoc()}${officialDocumentCard()}</section>
- ${cleanPrescriptionCards(data["prescription-surf"])}
- <section class="card"><div class="title">4 · Servitudes d'utilité publique</div>${side("SUP surfaciques",vals(data["assiette-sup-s"]))}${side("SUP linéaires",vals(data["assiette-sup-l"]))}${side("SUP ponctuelles",vals(data["assiette-sup-p"]))}</section>
- ${boundaryModel()}
- <section class="card"><div class="title">5 · Synthèse de fiabilité</div><div class="okline"><b>Données exhaustives</b><p>Les familles GPU disponibles sont interrogées sur l'emprise du terrain et leurs résultats sont restitués par catégorie.</p></div><div class="notice"><b>Limite volontaire :</b> ArchiTerrain ne transforme pas encore automatiquement chaque objet en règle de distance ou de prospect. La prochaine étape sera de relier chaque objet pertinent au passage exact du règlement écrit et à sa page.</div></section>`;
+ ${renderOrderedRegulation(data)}
+ <section class="card"><div class="title">9 · Documents et sources officielles</div><div class="rule"><strong>Zonage</strong><div>${zoneName(zones).map(esc).join(" · ")||"Zonage non retourné"}</div><div class="source">Source : API Carto / Géoportail de l'Urbanisme</div></div>${officialDoc()}<div class="small" style="margin-top:8px">Les pièces officielles et leurs liens sont regroupés ici. Les détails techniques des objets restent masqués ailleurs.</div></section>
+  <section class="card"><div class="title">11 · Contraintes et servitudes complémentaires</div>${side("SUP surfaciques",vals(data["assiette-sup-s"]))}${side("SUP linéaires",vals(data["assiette-sup-l"]))}${side("SUP ponctuelles",vals(data["assiette-sup-p"]))}</section>
+ <section class="card"><div class="title">10 · Lecture géométrique du terrain</div><div class="small">Cette lecture géométrique prépare l'application des règles d'implantation. Elle ne constitue pas encore une interprétation juridique.</div></section>${boundaryModel()}
+ <section class="card"><div class="title">12 · Fiabilité et limites de l’analyse</div><div class="okline"><b>Données exhaustives</b><p>Les familles GPU disponibles sont interrogées sur l'emprise du terrain et leurs résultats sont restitués par catégorie.</p></div><div class="notice"><b>Limite volontaire :</b> ArchiTerrain ne transforme pas encore automatiquement chaque objet en règle de distance ou de prospect. La prochaine étape sera de relier chaque objet pertinent au passage exact du règlement écrit et à sa page.</div></section>`;
   buildMap(u,selected);
   runSideMapping(u,data["prescription-surf"]);
  }catch(e){document.getElementById("status").innerHTML='<div class="error">'+esc(e.message)+"</div>"}
