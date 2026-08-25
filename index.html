@@ -1,6 +1,6 @@
 <!doctype html>
 <html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<meta name="theme-color" content="#111827"><title>ArchiTerrain V4.2.3</title>
+<meta name="theme-color" content="#111827"><title>ArchiTerrain V4</title>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 <style>
 :root{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#111827;background:#f4f6f8}
@@ -24,82 +24,38 @@ button.secondary{background:#e5e7eb;color:#111827}.error{background:#fee2e2;colo
 .source{font-size:12px;color:#64748b;margin-top:8px}a{color:#2563eb;text-decoration:none}
 details{margin-top:8px}summary{color:#2563eb;cursor:pointer}.check{display:grid;grid-template-columns:1fr auto;gap:8px;padding:10px 0;border-bottom:1px solid #eee}
 .dangerline{border-left:4px solid #ef4444;padding-left:10px}.okline{border-left:4px solid #22c55e;padding-left:10px}
-
-.edgegrid{display:grid;grid-template-columns:1fr;gap:8px;margin-top:10px}
-.edge{border:1px solid #e2e8f0;border-radius:12px;padding:11px;background:#fff}
-.edge .kind{font-weight:800}.edge .meta{font-size:12px;color:#64748b;margin-top:4px}
-.edge.road{border-left:5px solid #2563eb}.edge.lateral{border-left:5px solid #7c3aed}.edge.fond{border-left:5px solid #ea580c}.edge.unknown{border-left:5px solid #94a3b8}
-.rulegate{border:1px solid #dbe3ef;border-radius:12px;padding:12px;margin-top:10px}
-.rulegate h4{margin:0 0 7px}
-
-.mapping{display:grid;gap:10px;margin-top:10px}
-.maprow{border:1px solid #e2e8f0;border-radius:13px;padding:12px;background:#fff}
-.maprow .top{display:flex;justify-content:space-between;gap:8px}
-.maprow .name{font-weight:800}.maprow .sub{font-size:12px;color:#64748b;margin-top:4px}
-.tag{padding:5px 8px;border-radius:999px;font-size:11px;font-weight:800}
-.tag.road{background:#dbeafe;color:#1d4ed8}.tag.lat{background:#ede9fe;color:#6d28d9}
-.tag.fond{background:#ffedd5;color:#c2410c}.tag.none{background:#f1f5f9;color:#475569}
-.sourcepill{margin-top:8px;background:#f8fafc;border-radius:9px;padding:8px;font-size:12px}
 </style></head><body>
-<header><div class="brand">ArchiTerrain</div><div class="sub">Pré-diagnostic urbanistique · V4.2.3 — correctif bouton identification</div></header>
+<header><div class="brand">ArchiTerrain</div><div class="sub">Pré-diagnostic urbanistique · V4 — architecture-first</div></header>
 <main>
 <section class="card"><div class="title">1 · Identifier le terrain</div>
 <div class="small">Adresse + références cadastrales facultatives</div>
 <input id="address" value="28 boulevard André, 93250 Villemomble">
 <input id="refs" placeholder="AQ 61, AQ 62, AQ 63">
-<button type="button" onclick="searchLand()">Identifier le terrain</button><div class="small">Géocodage : Géoplateforme IGN / BAN · Cadastre : API Carto IGN</div><div id="status"></div></section>
+<button onclick="searchLand()">Identifier le terrain</button><div id="status"></div></section>
 <div id="app"></div></main>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@turf/turf@7/turf.min.js"></script>
 <script>
-const API="https://apicarto.ign.fr/api",GEOCODE="https://data.geopf.fr/geocodage/search/";
+const API="https://apicarto.ign.fr/api",BAN="https://api-adresse.data.gouv.fr/search/";
 let S={adr:null,parcels:[],sel:[],map:null};
 const esc=x=>String(x??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 const pick=(p,ks)=>{for(const k of ks)if(p&&p[k]!=null&&p[k]!=="")return p[k];return null};
 const label=f=>{let p=f.properties||{},s=pick(p,["section","code_section","section_cadastrale"]),n=pick(p,["numero","numero_parcelle","num_parcelle"]);if(!s)for(const k in p)if(/section/i.test(k)&&p[k])s=p[k];if(!n)for(const k in p)if(/numero|num.*parc/i.test(k)&&p[k])n=p[k];return s||n?`${s||"—"} ${String(n||"—").replace(/^0+/,"")}`:(p.id_parcelle||p.id||"Parcelle")};
 const area=f=>Number(pick(f.properties||{},["contenance","surface"])||0);
-async function get(url){
- let r;
- try{r=await fetch(url,{method:"GET",mode:"cors",headers:{"Accept":"application/json"}});}
- catch(e){throw Error("Connexion impossible au service : "+(e.message||"réseau/CORS"))}
- if(!r.ok){let body="";try{body=await r.text()}catch(_){}throw Error("Service indisponible ("+r.status+")"+(body?" — "+body.slice(0,180):""))}
- return r.json();
-}
-async function geo(q){
- const url=GEOCODE+"?q="+encodeURIComponent(q)+"&index=address&limit=10&autocomplete=false";
- let j;
- try{ j=await get(url); }
- catch(e){
-   // Fallback kept for compatibility with environments that still proxy the former BAN endpoint.
-   const legacy="https://api-adresse.data.gouv.fr/search/?q="+encodeURIComponent(q)+"&limit=10";
-   try{ j=await get(legacy); }catch(e2){throw Error("Le service d’adresse IGN est inaccessible depuis ce navigateur. Détail : "+e.message);}
- }
- if(!j.features?.length)throw Error("Adresse introuvable. Essaie « 28 boulevard André, 93250 Villemomble ».");
- const first=v=>Array.isArray(v)?v[0]:v;
- const ranked=[...j.features].sort((a,b)=>(Number(b.properties?.score)||0)-(Number(a.properties?.score)||0));
- const f=ranked[0],p=f.properties||{};
- p.label=first(p.label)||[first(p.housenumber),first(p.street),first(p.postcode),first(p.city)].filter(Boolean).join(" ");
- p.citycode=first(p.citycode)||first(p.cityCode); p.postcode=first(p.postcode); p.city=first(p.city);
- if(!f.geometry?.coordinates?.length)throw Error("Le géocodeur a trouvé l’adresse mais n’a pas retourné ses coordonnées.");
- return f;
-}
+async function get(url){let r=await fetch(url);if(!r.ok)throw Error("Service indisponible ("+r.status+")");return r.json()}
+async function geo(q){let j=await get(BAN+"?q="+encodeURIComponent(q)+"&limit=5");if(!j.features?.length)throw Error("Adresse introuvable");return j.features[0]}
 async function parcelsByGeom(g){let j=await get(API+"/cadastre/parcelle?geom="+encodeURIComponent(JSON.stringify(g))+"&source_ign=PCI");return j.features||[]}
-async function parcelsByRef(insee,s,n){
- let q=new URLSearchParams({code_insee:String(insee||""),section:String(s||"").toUpperCase(),numero:String(n||"").padStart(4,"0"),source_ign:"PCI"});
- let j=await get(API+"/cadastre/parcelle?"+q);return j.features||[];
-}
+async function parcelsByRef(insee,s,n){let q=new URLSearchParams({code_insee:insee,section:s.toUpperCase(),numero:n.padStart(4,"0"),source_ign:"PCI"});let j=await get(API+"/cadastre/parcelle?"+q);return j.features||[]}
 async function gpu(layer,g){try{return await get(API+"/gpu/"+layer+"?geom="+encodeURIComponent(JSON.stringify(g)))}catch(e){return {features:[],error:e.message}}}
 function bbox(c,d=.00055){let[x,y]=c;return{type:"Polygon",coordinates:[[[x-d,y-d],[x+d,y-d],[x+d,y+d],[x-d,y+d],[x-d,y-d]]]}}
 async function searchLand(){
  document.getElementById("status").innerHTML='<div class="notice">Recherche cadastrale…</div>';
  try{
-  const q=document.getElementById("address").value.trim(); if(!q)throw Error("Saisis une adresse."); document.getElementById("status").innerHTML='<div class="notice">1/2 · Géocodage IGN de « '+esc(q)+' »…</div>';
- S.adr=await geo(q);
- document.getElementById("status").innerHTML='<div class="notice">2/2 · Adresse trouvée : <b>'+esc(S.adr.properties.label||q)+'</b> · récupération du cadastre…</div>';
+  S.adr=await geo(document.getElementById("address").value.trim());
   let refs=document.getElementById("refs").value.split(",").map(x=>x.trim()).filter(Boolean),fs=[];
   if(refs.length){for(let r of refs){let m=r.match(/^([A-Za-z]{1,3})\s*(\d{1,4})$/);if(m)fs.push(...await parcelsByRef(S.adr.properties.citycode,m[1],m[2]))}}
   else fs=await parcelsByGeom({type:"Point",coordinates:S.adr.geometry.coordinates});
-  if(!fs.length)fs=await parcelsByGeom(bbox(S.adr.geometry.coordinates,.0008));
+  if(!fs.length)fs=await parcelsByGeom(bbox(S.adr.geometry.coordinates));
   if(!fs.length)throw Error("Aucune parcelle trouvée");
   S.parcels=fs;S.sel=fs.length===1?[0]:[];renderChoices();
  }catch(e){document.getElementById("status").innerHTML='<div class="error">'+esc(e.message)+"</div>"}
@@ -124,88 +80,7 @@ function buildMap(site,selected){
  S.map.fitBounds(u.getBounds(),{padding:[25,25],maxZoom:18});setTimeout(()=>S.map.invalidateSize(),300);
 }
 function side(title,items){if(!items.length)return `<div class="side"><h3>${title}</h3><div class="small">Aucune donnée intersectante retournée par l’API.</div></div>`;return `<div class="side"><h3>${title}</h3>${items.slice(0,20).map(x=>`<div class="rule">${esc(x)}</div>`).join("")}</div>`}
-
-function polygonRings(feature){
- const g=feature?.geometry;if(!g)return [];
- if(g.type==="Polygon")return g.coordinates||[];
- if(g.type==="MultiPolygon")return (g.coordinates||[]).flat();
- return [];
-}
-function ringSegments(ring){
- const out=[];for(let i=0;i<ring.length-1;i++){const a=ring[i],b=ring[i+1];
- out.push({a,b,m:[(a[0]+b[0])/2,(a[1]+b[1])/2],len:Math.hypot(b[0]-a[0],b[1]-a[1]),i});}return out;
-}
-function pointSegDist(p,a,b){
- const dx=b[0]-a[0],dy=b[1]-a[1];if(!dx&&!dy)return Math.hypot(p[0]-a[0],p[1]-a[1]);
- const t=Math.max(0,Math.min(1,((p[0]-a[0])*dx+(p[1]-a[1])*dy)/(dx*dx+dy*dy)));
- return Math.hypot(p[0]-(a[0]+t*dx),p[1]-(a[1]+t*dy));
-}
-async function nearbyRoads(site){
- const c=turf.centroid(site).geometry.coordinates;
- const q=`[out:json][timeout:8];way(around:120,${c[1]},${c[0]})["highway"];out geom;`;
- try{const r=await fetch("https://overpass-api.de/api/interpreter?data="+encodeURIComponent(q));if(!r.ok)throw Error("Overpass "+r.status);return await r.json();}
- catch(e){return {elements:[],error:e.message};}
-}
-function roadSegments(data){
- const out=[];for(const el of data?.elements||[]){const g=el.geometry||[];
-  for(let i=0;i<g.length-1;i++)out.push({a:[g[i].lon,g[i].lat],b:[g[i+1].lon,g[i+1].lat],name:el.tags?.name||el.tags?.ref||"Voie non nommée",highway:el.tags?.highway||""});
- }return out;
-}
-function edgeClassification(site,roads){
- const rs=roadSegments(roads),edges=polygonRings(site).flatMap(r=>ringSegments(r));
- edges.forEach(e=>{e.roadDist=Infinity;e.road=null;for(const rr of rs){const d=pointSegDist(e.m,rr.a,rr.b);if(d<e.roadDist){e.roadDist=d;e.road=rr;}}});
- const frontage=edges.filter(e=>e.road&&e.roadDist<0.00018), fidx=new Set(frontage.map(e=>e.i));
- const non=edges.filter(e=>!fidx.has(e.i)), fond=[...non].sort((a,b)=>b.roadDist-a.roadDist)[0];
- return edges.map(e=>fidx.has(e.i)?{...e,kind:"road",confidence:"élevée"}:fond&&e.i===fond.i?{...e,kind:"fond",confidence:"moyenne"}:fond&&e.roadDist<fond.roadDist?{...e,kind:"lateral",confidence:"moyenne"}:{...e,kind:"unknown",confidence:"faible"});
-}
-function sideAnalysis(){return `<div id="side-analysis" class="rulegate"><h4>Géométrie des limites</h4><div class="small">Calcul en cours…</div></div>`;}
-async function runSideAnalysis(site){
- const box=document.getElementById("side-analysis");if(!box)return;
- const roads=await nearbyRoads(site),edges=edgeClassification(site,roads);
- const name=edges.find(e=>e.kind==="road"&&e.road)?.road?.name;
- box.innerHTML=`<h4>Géométrie des limites</h4><div class="notice">${name?`Voie de référence détectée : <b>${esc(name)}</b>.`:"Aucune voie OSM suffisamment proche n'a été détectée."} La qualification ci-dessous est géométrique, pas juridique.</div>
- <div class="edgegrid">${edges.map((e,k)=>`<div class="edge ${e.kind}"><div class="kind">${e.kind==="road"?"🛣️ Voie / emprise publique":e.kind==="fond"?"🔚 Fond de parcelle":e.kind==="lateral"?"↔️ Limite séparative latérale":"❔ Limite non classée"}</div><div class="meta">Segment ${k+1} · longueur ≈ ${Math.round(e.len*111000)} m · confiance ${e.confidence}</div>${e.road?`<div class="meta">Voie proche : ${esc(e.road.name)} · distance ≈ ${Math.round(e.roadDist*111000)} m</div>`:""}</div>`).join("")}</div>
- <div class="small" style="margin-top:8px">Une règle réglementaire ne sera appliquée à un segment qu'après croisement avec la prescription et le règlement écrit.</div>`;
-}
-function boundaryModel(){
- return `<section class="card"><div class="title">4 · Analyse géométrique des limites</div><div class="notice">La V4.1 détermine maintenant les côtés à partir de la géométrie cadastrale et de la voie la plus proche. Le résultat est une hypothèse géométrique tant qu'il n'est pas corroboré par le règlement.</div>${sideAnalysis()}</section>`;
-}
-
-
-function regulationCandidates(pres,kind){
- const out=[];
- for(const f of pres?.features||[]){
-  const p=f.properties||{};
-  const t=String(p.typepsc||p.type||"").trim(), s=String(p.stypepsc||p.stype||"").trim();
-  const code=t&&s?`${t}-${s}`:(t||s||"");
-  const text=txt(p);
-  if((kind==="road"&&(code==="15-01"||/voie|emprise publique/i.test(text))) ||
-     (kind==="lateral"&&(code==="15-02"||/limite.*separative.*lat/i.test(text))) ||
-     (kind==="fond"&&(code==="15-03"||/fond.*parcelle/i.test(text)))){
-    out.push({code:code||"—",text});
-  }
- }
- return out;
-}
-async function runSideMapping(site,pres){
- const box=document.getElementById("side-analysis"); if(!box)return;
- const roads=await nearbyRoads(site);
- const edges=edgeClassification(site,roads);
- const name=edges.find(e=>e.kind==="road"&&e.road)?.road?.name;
- const html=edges.map((e,i)=>{
-   const kind=e.kind;
-   const label=kind==="road"?"Voie / emprise publique":kind==="fond"?"Fond de parcelle":kind==="lateral"?"Limite séparative latérale":"Limite non classée";
-   const cls=kind==="road"?"road":kind==="fond"?"fond":kind==="lateral"?"lat":"none";
-   const cand=regulationCandidates(pres,kind);
-   return `<div class="maprow"><div class="top"><div class="name">Segment ${i+1} — ${label}</div><span class="tag ${cls}">${e.confidence}</span></div>
-   <div class="sub">Longueur ≈ ${Math.round(e.len*111000)} m${e.road?` · voie proche : ${esc(e.road.name)}`:""}</div>
-   <div class="sourcepill"><b>Prescription candidate :</b> ${cand.length?cand.map(x=>esc(x.code)).join(" · "):"aucune correspondance automatique"}</div></div>`;
- }).join("");
- box.innerHTML=`<h4>Géométrie → prescription</h4>
- <div class="notice">${name?`Front de rue candidat : <b>${esc(name)}</b>.`:"Front de rue non identifié."} Le moteur relie maintenant la géométrie à une <b>catégorie CNIG candidate</b>, sans encore en déduire la règle.</div>
- <div class="mapping">${html}</div>
- <div class="small" style="margin-top:8px"><b>Règle de fiabilité :</b> segment géométrique → catégorie CNIG → document → article → valeur. Si un maillon manque, aucune distance n'est affirmée.</div>`;
-}
+function boundaryModel(){return `<section class="card"><div class="title">4 · Analyse par côté de parcelle</div><div class="notice">V4 distingue la <b>voie</b>, les <b>limites séparatives</b> et le <b>fond de parcelle</b>. Aucun côté n’est affecté à une catégorie uniquement à partir d’un code CNIG.</div><div class="side"><h3>🛣️ Voie / emprise publique</h3><div class="small">Côté à relier au boulevard André par la géométrie.</div></div><div class="side"><h3>↔️ Limite séparative latérale gauche</h3><div class="small">À déterminer sur la géométrie cadastrale.</div></div><div class="side"><h3>↔️ Limite séparative latérale droite</h3><div class="small">À déterminer sur la géométrie cadastrale.</div></div><div class="side"><h3>🔚 Fond de parcelle</h3><div class="small">À déterminer à partir de la voie de référence.</div></div></section>`}
 function rules(pres){
  let fs=pres?.features||[];if(!fs.length)return `<div class="side"><h3>Règles opposables détectées</h3><div class="small">Aucune prescription surfacique retournée. Cela ne signifie pas « aucune règle » : le règlement écrit reste indispensable.</div></div>`;
  return `<div class="side"><h3>Règles opposables détectées</h3>${fs.map(f=>{let p=f.properties||{},code=(p.typepsc||"")+"-"+(p.stypepsc||""),a=[];for(let i=1;i<=5;i++)if(p["lib_attr"+i]&&p["lib_val"+i])a.push(p["lib_attr"+i]+": "+p["lib_val"+i]);return `<div class="rule"><strong>Code CNIG ${esc(code)}</strong><div>${esc(a.join(" · ")||txt(p))}</div><div class="evidence">Portée non déduite automatiquement. Le code CNIG classe la prescription ; il ne remplace pas le texte réglementaire.</div></div>`}).join("")}</div>`;
@@ -226,7 +101,6 @@ ${rules(pres)}
 ${boundaryModel()}${projectForm()}
 <section class="card"><div class="title">5 · Synthèse fiable</div><div class="dangerline"><b>Établi</b><p>Parcelles, géométrie, zonage et intersections réellement retournées par les services officiels.</p></div><div class="okline"><b>Calculable ensuite</b><p>Une prescription côté par côté lorsque la géométrie et le texte réglementaire fournissent les éléments nécessaires.</p></div><div class="notice"><b>Règle V4 :</b> aucune distance n’est présentée comme applicable à une limite si sa portée n’est pas démontrée par une donnée géographique + une source réglementaire.</div></section>`;
   buildMap(u,selected);
-  runSideMapping(u,pres);
  }catch(e){document.getElementById("status").innerHTML='<div class="error">'+esc(e.message)+"</div>"}
 }
 function applyProject(){document.getElementById("projectMsg").innerHTML='<div class="notice">Paramètres enregistrés. La prochaine étape les croisera avec les branches réglementaires côté par côté.</div>'}
