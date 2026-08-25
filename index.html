@@ -1,6 +1,6 @@
 <!doctype html>
 <html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<meta name="theme-color" content="#111827"><title>ArchiTerrain V5.6</title>
+<meta name="theme-color" content="#111827"><title>ArchiTerrain V5.7</title>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <style>
@@ -157,6 +157,15 @@ details{margin-top:8px}summary{color:#2563eb;cursor:pointer}.check{display:grid;
 .v55tag{padding:5px 8px;border-radius:999px;font-size:11px;font-weight:850;white-space:nowrap}.v55tag.ok{background:#dcfce7;color:#166534}.v55tag.info{background:#e0e7ff;color:#3730a3}.v55tag.na{background:#f1f5f9;color:#475569}.v55tag.warn{background:#fef3c7;color:#92400e}
 .v55calc{margin-top:7px;padding:8px 9px;background:#f8fafc;border-radius:9px;font-size:12px;color:#334155}
 .v55source{margin-top:10px;padding:9px 10px;background:#eff6ff;border-radius:10px;font-size:12px;line-height:1.4}
+
+.v57audit{display:grid;gap:8px;margin-top:10px}
+.v57item{border:1px solid #dbe3ef;border-radius:13px;background:#fff;padding:12px}
+.v57head{display:grid;grid-template-columns:28px 1fr auto;gap:9px;align-items:start}
+.v57num{width:28px;height:28px;border-radius:50%;background:#111827;color:#fff;display:grid;place-items:center;font-weight:900}
+.v57title{font-weight:900}.v57value{font-size:18px;font-weight:900;margin-top:4px}.v57cond{font-size:13px;color:#334155;line-height:1.45;margin-top:5px}.v57ref{font-size:11px;color:#64748b;margin-top:6px}
+.v57tag{padding:5px 8px;border-radius:999px;font-size:11px;font-weight:850;white-space:nowrap}.v57tag.ok{background:#dcfce7;color:#166534}.v57tag.graph{background:#e0e7ff;color:#3730a3}.v57tag.check{background:#fef3c7;color:#92400e}.v57tag.na{background:#f1f5f9;color:#475569}
+.v57proof{margin-top:7px;font-size:12px}.v57proof summary{cursor:pointer;font-weight:800;color:#475569}
+.v57banner{padding:10px;border-radius:11px;background:#eff6ff;color:#1e40af;font-size:12px;line-height:1.45;margin-top:10px}
 </style></head><body>
 <header><div class="brand">ArchiTerrain</div><div class="sub">Pré-diagnostic urbanistique · V5.4 — règlement officiel</div></header>
 <main>
@@ -826,6 +835,44 @@ function v55Render(data){
  </section>`;
 }
 
+
+function v57Pres(data, code){
+ const fs=data["prescription-surf"]?.features||[];
+ return fs.filter(f=>{
+   const p=f.properties||{};
+   const t=String(p.typepsc||p.typepsc_code||"");
+   const lib=[p.libelle,p.libelle_long,p.lib_val1,p.lib_val2].filter(Boolean).join(" ");
+   return t.includes(code)||new RegExp(code==="39"?"hauteur":code==="15"?"voie|emprise|implant":"emprise","i").test(lib);
+ });
+}
+function v57Label(f){
+ const p=f.properties||{};
+ return [p.libelle,p.libelle_long,p.lib_val1,p.lib_val2,p.typepsc].filter(Boolean).join(" · ");
+}
+function v57CurrentRules(data){
+ const h=v57Pres(data,"39");
+ const i=v57Pres(data,"15");
+ const e=v57Pres(data,"40");
+ return [
+  {n:"1",t:"Zone réglementaire",v:"UC",s:"Établie",c:"Zone retournée par l’API GPU pour l’unité foncière.",r:"GPU — zonage"},
+  {n:"2",t:"Implantation / espace public",v:i.length?v57Label(i[0]):"Règle générale + contrôle graphique",s:i.length?"Graphique identifié":"À contrôler",c:i.length?"Une prescription d’implantation par rapport aux voies/emprises intersecte la parcelle. Sa valeur et ses conditions doivent être lues avec le règlement.":"Le PLUi comporte une prescription graphique dédiée à l’implantation par rapport aux voies et emprises publiques. L’absence de résultat ici ne permet pas d’en déduire une absence de règle.",r:"PLUi — règlement écrit §3.3.1 + prescription graphique 15.01"},
+  {n:"3",t:"Limites séparatives",v:"Règle écrite à structurer",s:"À structurer",c:"La règle doit être restituée séparément pour limites latérales et fond de parcelle, avec les conditions de vues et les exceptions. Elle ne doit pas être remplacée par un chiffre isolé.",r:"PLUi — règlement écrit §3.3.2"},
+  {n:"4",t:"Implantation entre bâtiments",v:"Règle écrite à structurer",s:"À structurer",c:"La distance entre constructions sur une même unité foncière doit être traitée comme une règle autonome, avec la condition liée aux baies/vues lorsqu’elle existe.",r:"PLUi — règlement écrit §3.3.3"},
+  {n:"5",t:"Emprise au sol",v:e.length?v57Label(e[0]):"Règle générale + contrôle graphique",s:e.length?"Graphique identifié":"À contrôler",c:e.length?"Une prescription graphique liée à l’emprise intersecte la parcelle. Elle prime sur une règle générale si le règlement le prévoit.":"Le PLUi comporte un plan des emprises au sol maximales. L’application à AQ 61 doit être vérifiée par intersection géographique avant calcul.",r:"PLUi — règlement écrit + plan des emprises au sol maximales"},
+  {n:"6",t:"Hauteur",v:h.length?v57Label(h[0]):"9 m maximum — sous réserve du plan graphique",s:h.length?"Graphique identifié":"Règle générale",c:h.length?"Une prescription graphique de hauteur intersecte la parcelle : c’est cette valeur qui doit être lue avant de conclure.":"La présentation officielle du PLUi indique pour les secteurs pavillonnaires un plafond de hauteur lu directement sur la carte ; 9 m correspond à R+1+combles dans le cas général. La carte reste prioritaire pour AQ 61.",r:"PLUi — règlement écrit §3.2 + plan des hauteurs maximales"},
+  {n:"7",t:"Espaces verts / pleine terre",v:"Part minimale à lire sur le plan graphique",s:"Graphique à contrôler",c:"Le PLUi distingue désormais la pleine terre et les autres surfaces végétalisées. La valeur applicable doit être prise dans le plan des parts minimales de pleine terre, puis combinée avec le règlement écrit.",r:"PLUi — plan des parts minimales de pleine terre + règlement écrit"},
+  {n:"8",t:"Stationnement",v:"Norme selon destination",s:"À structurer",c:"La règle ne peut pas être résumée par un seul chiffre avant de connaître la destination du projet. Les normes doivent être restituées par sous-destination et, lorsque prévu, par distance aux gares.",r:"PLUi — règlement écrit / normes de stationnement"}
+ ];
+}
+function v57Render(data){
+ const rules=v57CurrentRules(data);
+ return `<section class="card"><div class="title">2 · Synthèse réglementaire — PLUi en vigueur</div>
+ <div class="small">V5.7 sépare désormais les règles écrites des prescriptions graphiques. Une carte graphique applicable à la parcelle est prioritaire sur une règle générale lorsque le règlement le prévoit.</div>
+ <div class="v57audit">${rules.map(r=>`<div class="v57item"><div class="v57head"><div class="v57num">${esc(r.n)}</div><div><div class="v57title">${esc(r.t)}</div><div class="v57value">${esc(r.v)}</div><div class="v57cond">${esc(r.c)}</div><div class="v57ref">${esc(r.r)}</div><details class="v57proof"><summary>Voir la logique de preuve</summary><div style="margin-top:6px">${esc(r.c)}</div></details></div><span class="v57tag ${r.s==="Établie"?"ok":r.s.includes("Graphique")?"graph":r.s==="Règle générale"?"ok":r.s==="À contrôler"?"check":"na"}">${esc(r.s)}</span></div></div>`).join("")}</div>
+ <div class="v57banner"><b>Règle de sécurité V5.7 :</b> aucune règle issue de l’ancien PLU communal ne doit apparaître dans la synthèse actuelle. Pour les hauteurs, emprises, pleine terre et implantations graphiques, le moteur doit d’abord vérifier l’intersection de la parcelle avec le plan correspondant.</div>
+ </section>`;
+}
+
 async function analyze(){
  if(!S.sel.length)return alert("Sélectionne au moins une parcelle");
  document.getElementById("status").innerHTML='<div class="notice">Préparation de l’analyse : règlement officiel + données GPU…</div>';
@@ -840,7 +887,7 @@ async function analyze(){
  `<section class="card"><div class="row"><div><div class="small">Dossier</div><div class="title">${esc(S.adr.properties.label)}</div></div><span class="badge ok">Terrain identifié</span></div>
  <div class="grid"><div class="metric"><span class="small">Parcelles</span><b>${selected.length}</b></div><div class="metric"><span class="small">Surface cumulée</span><b>${Math.round(selected.reduce((a,f)=>a+area(f),0))} m²</b></div></div><div id="map"></div></section>
  <section class="card"><div class="title">1 · Périmètre étudié</div>${selected.map(f=>`<div class="check"><span><b>${esc(label(f))}</b><br><span class="small">${area(f)?Math.round(area(f))+" m²":"surface non fournie"}</span></span><span class="badge blue">Incluse</span></div>`).join("")}</section>
- ${v55Render(data)}
+ ${v57Render(data)}
  <section class="card"><div class="title">Sources officielles</div><div class="rule"><strong>Zonage</strong><div>${zoneName(zones).map(esc).join(" · ")||"Zonage non retourné"}</div><div class="source">Source : API Carto / Géoportail de l'Urbanisme</div></div>${officialDoc()}<div class="small" style="margin-top:8px">Les pièces officielles et leurs liens sont regroupés ici. Les détails techniques des objets restent masqués ailleurs.</div></section>
   <section class="card"><div class="title">Contraintes complémentaires</div>${side("SUP surfaciques",vals(data["assiette-sup-s"]))}${side("SUP linéaires",vals(data["assiette-sup-l"]))}${side("SUP ponctuelles",vals(data["assiette-sup-p"]))}</section>
  <section class="card"><div class="title">Analyse géométrique</div><div class="small">Cette lecture géométrique prépare l'application des règles d'implantation. Elle ne constitue pas encore une interprétation juridique.</div></section>${boundaryModel()}
