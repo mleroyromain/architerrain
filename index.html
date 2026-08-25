@@ -1,6 +1,6 @@
 <!doctype html>
 <html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<meta name="theme-color" content="#111827"><title>ArchiTerrain V4.5.1</title>
+<meta name="theme-color" content="#111827"><title>ArchiTerrain V4.6</title>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 <style>
 :root{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#111827;background:#f4f6f8}
@@ -64,8 +64,18 @@ details{margin-top:8px}summary{color:#2563eb;cursor:pointer}.check{display:grid;
 .branchrow .src{grid-column:1/-1;font-size:12px;color:#64748b}
 .answer{padding:5px 8px;border-radius:999px;font-size:11px;font-weight:800}
 .answer.est{background:#dcfce7;color:#166534}.answer.cond{background:#fef3c7;color:#92400e}.answer.miss{background:#f1f5f9;color:#475569}
+
+.cleanpres{display:grid;gap:10px;margin-top:10px}
+.prescard{border:1px solid #dbe3ef;border-radius:14px;padding:14px;background:#fff}
+.prescard .ptitle{font-size:17px;font-weight:850}
+.prescard .pvalue{font-size:19px;font-weight:850;margin-top:5px}
+.prescard .pwhy{font-size:13px;color:#475569;line-height:1.4;margin-top:6px}
+.prescard .psource{font-size:12px;color:#64748b;margin-top:8px}
+.prescard.green{border-left:5px solid #22c55e}.prescard.amber{border-left:5px solid #f59e0b}.prescard.red{border-left:5px solid #ef4444}.prescard.blue{border-left:5px solid #2563eb}
+.techdetails{margin-top:9px;font-size:12px;color:#64748b}
+.techdetails summary{cursor:pointer;color:#475569;font-weight:700}
 </style></head><body>
-<header><div class="brand">ArchiTerrain</div><div class="sub">Pré-diagnostic urbanistique · V4.5.1 — correctif moteur de règles</div></header>
+<header><div class="brand">ArchiTerrain</div><div class="sub">Pré-diagnostic urbanistique · V4.6 — lecture prescriptions</div></header>
 <main>
 <section class="card"><div class="title">1 · Identifier le terrain</div>
 <div class="small">Adresse + références cadastrales facultatives</div>
@@ -245,9 +255,40 @@ async function runSideMapping(site,pres){
  <div class="small" style="margin-top:8px"><b>Chaîne de preuve :</b> côté géométrique → intersection éventuelle → pièce GPU → article du règlement → condition → valeur. Une valeur absente à un maillon reste non déterminée.</div>`;
 }
 
+function prescriptionLabel(p){
+ return pick(p,["libelle","libelle_long","libelle_prescription","lib_prescription","lib_attr1","lib_val1"]) || "";
+}
+function prescriptionTechnical(p){
+ const keys=["typepsc","stypepsc","gid","gpu_doc_id","gpu_status","gpu_timestamp","partition","datvalid","idurb","lib_idpsc"];
+ return keys.filter(k=>p[k]!=null&&p[k]!=="").map(k=>`${k}=${p[k]}`).join(" · ");
+}
+function cleanPrescriptionCards(pres){
+ const fs=pres?.features||[];
+ if(!fs.length)return `<section class="card"><div class="title">Prescriptions</div><div class="small">Aucune prescription surfacique intersectante retournée. Cela ne signifie pas qu'il n'existe aucune règle : le règlement écrit et les autres couches doivent être consultés.</div></section>`;
+ const seen=new Set(),cards=[];
+ for(const f of fs){
+  const p=f.properties||{}, code=[p.typepsc,p.stypepsc].filter(Boolean).join("-");
+  const label=prescriptionLabel(p)||"Prescription identifiée";
+  const value=pick(p,["lib_val1","lib_val2","valeur","valeur1"])||"";
+  const key=(label+"|"+value+"|"+code).toLowerCase();
+  if(seen.has(key))continue;seen.add(key);
+  let tone="amber",status="Portée à qualifier";
+  if(/al[ée]a.*argile|retrait-gonflement/i.test(label+" "+value)){tone="red";status="Contrainte à prendre en compte";}
+  else if(/implantation|retrait|distance|voie|emprise/i.test(label+" "+value)){tone="blue";status="Règle d'implantation identifiée";}
+  cards.push(`<div class="prescard ${tone}">
+   <div class="ptitle">${esc(label)}</div>
+   ${value?`<div class="pvalue">${esc(value)}</div>`:""}
+   <div class="pwhy">${esc(status)}. Le moteur n'attribue pas cette prescription à une limite de propriété sans preuve géométrique et réglementaire.</div>
+   <div class="psource">Source : GPU · document PLUi Grand Paris–Grand Est</div>
+   ${code||prescriptionTechnical(p)?`<details class="techdetails"><summary>Voir la preuve technique</summary><div style="margin-top:6px">${esc(prescriptionTechnical(p)||code)}</div></details>`:""}
+  </div>`);
+ }
+ return `<section class="card"><div class="title">Prescriptions — lecture simplifiée</div>
+ <div class="small">Les éléments techniques CNIG restent disponibles, mais sont masqués par défaut pour ne pas polluer la lecture architecturale.</div>
+ <div class="cleanpres">${cards.join("")}</div></section>`;
+}
 function rules(pres){
- let fs=pres?.features||[];if(!fs.length)return `<div class="side"><h3>Règles opposables détectées</h3><div class="small">Aucune prescription surfacique retournée. Cela ne signifie pas « aucune règle » : le règlement écrit reste indispensable.</div></div>`;
- return `<div class="side"><h3>Règles opposables détectées</h3>${fs.map(f=>{let p=f.properties||{},code=(p.typepsc||"")+"-"+(p.stypepsc||""),a=[];for(let i=1;i<=5;i++)if(p["lib_attr"+i]&&p["lib_val"+i])a.push(p["lib_attr"+i]+": "+p["lib_val"+i]);return `<div class="rule"><strong>Code CNIG ${esc(code)}</strong><div>${esc(a.join(" · ")||txt(p))}</div><div class="evidence">Portée non déduite automatiquement. Le code CNIG classe la prescription ; il ne remplace pas le texte réglementaire.</div></div>`}).join("")}</div>`;
+ return cleanPrescriptionCards(pres);
 }
 
 function projectContext(){
