@@ -1,6 +1,6 @@
 <!doctype html>
 <html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<meta name="theme-color" content="#111827"><title>ArchiTerrain V4.9</title>
+<meta name="theme-color" content="#111827"><title>ArchiTerrain V5.1</title>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 <style>
 :root{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#111827;background:#f4f6f8}
@@ -103,8 +103,24 @@ details{margin-top:8px}summary{color:#2563eb;cursor:pointer}.check{display:grid;
 .regline .label{font-weight:800}.regline .desc{font-size:13px;color:#475569;line-height:1.4;margin-top:3px}
 .state{padding:5px 9px;border-radius:999px;font-size:11px;font-weight:850;white-space:nowrap;background:#eef2ff;color:#3730a3}
 .state.ok{background:#dcfce7;color:#166534}.state.warn{background:#fef3c7;color:#92400e}.state.none{background:#f1f5f9;color:#475569}
+
+.v5summary{display:grid;gap:8px;margin-top:10px}
+.v5item{display:grid;grid-template-columns:34px 1fr auto;gap:10px;align-items:start;padding:13px;border:1px solid #e2e8f0;border-radius:13px;background:#fff}
+.v5num{width:30px;height:30px;border-radius:50%;display:grid;place-items:center;background:#111827;color:#fff;font-weight:900}
+.v5title{font-weight:900}.v5value{font-size:16px;font-weight:850;margin-top:3px}.v5source{font-size:12px;color:#64748b;margin-top:4px}
+.v5state{padding:5px 8px;border-radius:999px;font-size:11px;font-weight:850;white-space:nowrap}
+.v5state.ok{background:#dcfce7;color:#166534}.v5state.warn{background:#fef3c7;color:#92400e}.v5state.none{background:#f1f5f9;color:#475569}
+.v5more{margin-top:12px}.v5more details{border-top:1px solid #e5e7eb;padding:10px 0}.v5more summary{cursor:pointer;font-weight:800}
+
+.v51card{border:1px solid #dbe3ef;border-radius:14px;padding:13px;background:#fff;margin-top:8px}
+.v51line{display:grid;grid-template-columns:1fr auto;gap:12px;align-items:start;padding:10px 0;border-bottom:1px solid #eef2f7}
+.v51line:last-child{border-bottom:0}
+.v51rule{font-weight:850;font-size:15px}.v51value{font-size:18px;font-weight:900;margin-top:3px}.v51cond{font-size:13px;color:#475569;line-height:1.4;margin-top:4px}.v51src{font-size:12px;color:#64748b;margin-top:5px}
+.v51tag{padding:5px 8px;border-radius:999px;font-size:11px;font-weight:850;white-space:nowrap}
+.v51tag.ok{background:#dcfce7;color:#166534}.v51tag.warn{background:#fef3c7;color:#92400e}.v51tag.info{background:#eef2ff;color:#3730a3}
+.v51evidence{margin-top:7px;font-size:12px}.v51evidence summary{cursor:pointer;font-weight:800;color:#475569}
 </style></head><body>
-<header><div class="brand">ArchiTerrain</div><div class="sub">Pré-diagnostic urbanistique · V4.9 — restitution structurée</div></header>
+<header><div class="brand">ArchiTerrain</div><div class="sub">Pré-diagnostic urbanistique · V5.1 — règles sourcées</div></header>
 <main>
 <section class="card"><div class="title">1 · Identifier le terrain</div>
 <div class="small">Adresse + références cadastrales facultatives</div>
@@ -477,27 +493,38 @@ function regValue(x){
  if(!x)return "";
  return pick(x.p,["lib_val1","lib_val2","valeur","valeur1"])||"";
 }
+
 function orderedRegulation(data){
  const pres=allFeatures(data,["prescription-surf","prescription-lin","prescription-pct"]);
- const info=allFeatures(data,["info-surf","info-lin","info-pct"]);
- const sup=allFeatures(data,["assiette-sup-s","assiette-sup-l","assiette-sup-p"]);
- const zones=data["zone-urba"]?.features||[];
- const sections=[
-  ["1","Zone réglementaire", zones.length?`Zone ${zoneName(data["zone-urba"]).join(" · ")}`:"Zone non retournée", zones.length?"Règle de zone":"Non déterminé","ok"],
-  ["2","Implantation par rapport à l’espace public", firstBy(/voie|emprise publique|alignement|retrait/i,pres), "Prescription / règle à qualifier","warn"],
-  ["3","Implantation par rapport aux limites", firstBy(/limite séparative|séparative|fond de parcelle|limite de propriété/i,pres), "Règle à établir depuis le règlement écrit","warn"],
-  ["4","Implantation entre bâtiments sur une même parcelle", firstBy(/même propriété|même parcelle|entre constructions|entre bâtiments|construction.*construction/i,pres), "Règle à établir depuis le règlement écrit","warn"],
-  ["5","Emprise au sol autorisée", firstBy(/emprise au sol|coefficient d.?emprise|CES/i,pres), "Valeur à établir depuis le règlement écrit","warn"],
-  ["6","Hauteur autorisée", firstBy(/hauteur|faîtage|égout|acrotère/i,pres), "Valeur à établir depuis le règlement écrit","warn"],
-  ["7","Espaces verts / pleine terre", firstBy(/espace[s]? vert|pleine terre|végétalis|plantation/i,pres), "Règle à établir depuis le règlement écrit","warn"],
-  ["8","Stationnement", firstBy(/stationnement|parking|place[s]? de stationnement/i,pres), "Règle à établir depuis le règlement écrit","warn"],
+ const pickText=(rx)=>firstBy(rx,pres);
+ const z=data["zone-urba"]?.features||[];
+ return [
+  ["1","Zone réglementaire",z.length?zoneName(data["zone-urba"]).join(" · "):"Non déterminée",z.length?"Établie":"À déterminer","ok"],
+  ["2","Implantation / espace public",pickText(/voie|emprise publique|alignement|retrait/i),"À établir dans le règlement","warn"],
+  ["3","Implantation / limites",pickText(/limite séparative|séparative|fond de parcelle|limite de propriété/i),"À établir dans le règlement","warn"],
+  ["4","Implantation entre bâtiments",pickText(/même propriété|même parcelle|entre constructions|entre bâtiments/i),"À établir dans le règlement","warn"],
+  ["5","Emprise au sol",pickText(/emprise au sol|coefficient d.?emprise|CES/i),"À établir dans le règlement","warn"],
+  ["6","Hauteur",pickText(/hauteur|faîtage|égout|acrotère/i),"À établir dans le règlement","warn"],
+  ["7","Espaces verts / pleine terre",pickText(/espace[s]? vert|pleine terre|végétalis|plantation/i),"À établir dans le règlement","warn"],
+  ["8","Stationnement",pickText(/stationnement|parking|place[s]? de stationnement/i),"À établir dans le règlement","warn"]
  ];
- const extra=[];
- if(pres.length) extra.push(["P","Autres prescriptions graphiques",`${pres.length} objet(s) intersectant(s)`, "À qualifier", "warn"]);
- if(sup.length) extra.push(["S","Servitudes d’utilité publique",`${sup.length} objet(s) intersectant(s)`, "À examiner", "warn"]);
- if(info.length) extra.push(["I","Informations / risques / contraintes",`${info.length} objet(s) intersectant(s)`, "À examiner", "warn"]);
- return [...sections,...extra];
 }
+function renderOrderedRegulation(data){
+ const sections=orderedRegulation(data);
+ return `<section class="card"><div class="title">2 · Synthèse réglementaire</div>
+ <div class="small">Les 8 points essentiels, dans l'ordre de lecture. Les détails techniques et données secondaires sont volontairement masqués.</div>
+ <div class="v5summary">${sections.map(s=>{
+  const [n,title,obj,status,tone]=s;
+  let value=status==="Établie"?obj:(obj?humanReg(obj.p).label:status);
+  let source=obj&&typeof obj==="object"?"Donnée graphique GPU — portée à vérifier dans le règlement écrit":"Règlement écrit — recherche de la règle applicable";
+  return `<div class="v5item"><div class="v5num">${n}</div><div><div class="v5title">${esc(title)}</div><div class="v5value">${esc(value||"Aucune donnée graphique spécifique")}</div><div class="v5source">${esc(source)}</div></div><span class="v5state ${tone}">${esc(status)}</span></div>`;
+ }).join("")}</div>
+ <div class="v5more"><details><summary>Autres contraintes à prendre en compte</summary>
+  <div class="small" style="margin-top:8px">Servitudes d'utilité publique, risques, patrimoine, informations diverses et autres prescriptions. Elles sont regroupées ici pour ne pas polluer la lecture des 8 règles principales.</div>
+ </details></div>
+ </section>`;
+}
+
 function renderOrderedRegulation(data){
  const sections=orderedRegulation(data);
  return `<section class="card"><div class="title">2 · Synthèse réglementaire — lecture architecte</div>
@@ -516,6 +543,46 @@ function renderOrderedRegulation(data){
  </section>`;
 }
 
+
+function v51OfficialRuleText(){
+ try{
+  const s=(window.S&&S.regulationText)?String(S.regulationText):"";
+  return s.replace(/\s+/g," ").trim();
+ }catch(_){return "";}
+}
+function v51Extract(rx,text){
+ const m=text.match(rx);
+ return m?m[0].slice(0,900):"";
+}
+function v51RuleEvidence(title, rx){
+ const text=v51OfficialRuleText();
+ const hit=v51Extract(rx,text);
+ if(!hit)return {value:"Non déterminé",status:"À vérifier",tone:"warn",cond:"Aucune clause suffisamment explicite n'a été retrouvée dans le texte chargé.",src:"Règlement écrit"};
+ const nums=[...hit.matchAll(/(\d+(?:[.,]\d+)?)\s*m\b/gi)].map(m=>m[1].replace(",","."));
+ let value=nums.length?nums[0]+" m":"Clause identifiée";
+ return {value,status:"Preuve textuelle",tone:"info",cond:hit,src:"Règlement écrit — extrait à rattacher à l'article/page"};
+}
+function v51Build(){
+ const defs=[
+  ["2","Implantation / espace public",/implantation.{0,300}(?:voie|emprise publique|alignement|retrait)/i],
+  ["3","Implantation / limites",/limites? séparatives?.{0,500}/i],
+  ["4","Implantation entre bâtiments",/(?:même propriété|même parcelle|entre constructions|entre bâtiments).{0,500}/i],
+  ["5","Emprise au sol",/emprise au sol.{0,500}/i],
+  ["6","Hauteur",/hauteur.{0,500}(?:m|mètres|égout|faîtage|acrotère)/i],
+  ["7","Espaces verts / pleine terre",/(?:espaces? verts?|pleine terre).{0,500}/i],
+  ["8","Stationnement",/stationnement.{0,500}/i]
+ ];
+ return defs.map(d=>{const r=v51RuleEvidence(d[1],d[2]);return {...r,num:d[0],title:d[1]};});
+}
+function v51Render(){
+ const rules=v51Build();
+ return `<section class="card"><div class="title">2 · Synthèse réglementaire — V5.1</div>
+ <div class="small">Chaque valeur ci-dessous est affichée uniquement si elle est retrouvée dans le texte réglementaire chargé. L'extrait de preuve est conservé derrière « Voir la preuve ».</div>
+ <div class="v51card">${rules.map(r=>`<div class="v51line"><div><div class="v51rule">${r.num} · ${esc(r.title)}</div><div class="v51value">${esc(r.value)}</div><div class="v51cond">${esc(r.cond)}</div><div class="v51src">${esc(r.src)}</div><details class="v51evidence"><summary>Voir la preuve</summary><div style="margin-top:6px">${esc(r.cond)}</div></details></div><span class="v51tag ${r.tone}">${esc(r.status)}</span></div>`).join("")}</div>
+ <div class="notice" style="margin-top:10px"><b>Règle V5.1 :</b> une distance n'est jamais attribuée à une limite, une voie ou un bâtiment sans que le texte permette d'identifier son objet. Lorsque cette précision manque, la valeur reste « non déterminée ».</div>
+ </section>`;
+}
+
 async function analyze(){
  if(!S.sel.length)return alert("Sélectionne au moins une parcelle");
  document.getElementById("status").innerHTML='<div class="notice">Analyse réglementaire exhaustive des données officielles…</div>';
@@ -529,11 +596,11 @@ async function analyze(){
  `<section class="card"><div class="row"><div><div class="small">Dossier</div><div class="title">${esc(S.adr.properties.label)}</div></div><span class="badge ok">Terrain identifié</span></div>
  <div class="grid"><div class="metric"><span class="small">Parcelles</span><b>${selected.length}</b></div><div class="metric"><span class="small">Surface cumulée</span><b>${Math.round(selected.reduce((a,f)=>a+area(f),0))} m²</b></div></div><div id="map"></div></section>
  <section class="card"><div class="title">1 · Périmètre étudié</div>${selected.map(f=>`<div class="check"><span><b>${esc(label(f))}</b><br><span class="small">${area(f)?Math.round(area(f))+" m²":"surface non fournie"}</span></span><span class="badge blue">Incluse</span></div>`).join("")}</section>
- ${renderOrderedRegulation(data)}
- <section class="card"><div class="title">9 · Documents et sources officielles</div><div class="rule"><strong>Zonage</strong><div>${zoneName(zones).map(esc).join(" · ")||"Zonage non retourné"}</div><div class="source">Source : API Carto / Géoportail de l'Urbanisme</div></div>${officialDoc()}<div class="small" style="margin-top:8px">Les pièces officielles et leurs liens sont regroupés ici. Les détails techniques des objets restent masqués ailleurs.</div></section>
-  <section class="card"><div class="title">11 · Contraintes et servitudes complémentaires</div>${side("SUP surfaciques",vals(data["assiette-sup-s"]))}${side("SUP linéaires",vals(data["assiette-sup-l"]))}${side("SUP ponctuelles",vals(data["assiette-sup-p"]))}</section>
- <section class="card"><div class="title">10 · Lecture géométrique du terrain</div><div class="small">Cette lecture géométrique prépare l'application des règles d'implantation. Elle ne constitue pas encore une interprétation juridique.</div></section>${boundaryModel()}
- <section class="card"><div class="title">12 · Fiabilité et limites de l’analyse</div><div class="okline"><b>Données exhaustives</b><p>Les familles GPU disponibles sont interrogées sur l'emprise du terrain et leurs résultats sont restitués par catégorie.</p></div><div class="notice"><b>Limite volontaire :</b> ArchiTerrain ne transforme pas encore automatiquement chaque objet en règle de distance ou de prospect. La prochaine étape sera de relier chaque objet pertinent au passage exact du règlement écrit et à sa page.</div></section>`;
+ ${v51Render()}
+ <section class="card"><div class="title">Sources officielles</div><div class="rule"><strong>Zonage</strong><div>${zoneName(zones).map(esc).join(" · ")||"Zonage non retourné"}</div><div class="source">Source : API Carto / Géoportail de l'Urbanisme</div></div>${officialDoc()}<div class="small" style="margin-top:8px">Les pièces officielles et leurs liens sont regroupés ici. Les détails techniques des objets restent masqués ailleurs.</div></section>
+  <section class="card"><div class="title">Contraintes complémentaires</div>${side("SUP surfaciques",vals(data["assiette-sup-s"]))}${side("SUP linéaires",vals(data["assiette-sup-l"]))}${side("SUP ponctuelles",vals(data["assiette-sup-p"]))}</section>
+ <section class="card"><div class="title">Analyse géométrique</div><div class="small">Cette lecture géométrique prépare l'application des règles d'implantation. Elle ne constitue pas encore une interprétation juridique.</div></section>${boundaryModel()}
+ <section class="card"><div class="title">Fiabilité</div><div class="okline"><b>Données exhaustives</b><p>Les familles GPU disponibles sont interrogées sur l'emprise du terrain et leurs résultats sont restitués par catégorie.</p></div><div class="notice"><b>Limite volontaire :</b> ArchiTerrain ne transforme pas encore automatiquement chaque objet en règle de distance ou de prospect. La prochaine étape sera de relier chaque objet pertinent au passage exact du règlement écrit et à sa page.</div></section>`;
   buildMap(u,selected);
   runSideMapping(u,data["prescription-surf"]);
  }catch(e){document.getElementById("status").innerHTML='<div class="error">'+esc(e.message)+"</div>"}
