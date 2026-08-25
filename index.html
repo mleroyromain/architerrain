@@ -1,6 +1,6 @@
 <!doctype html>
 <html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<meta name="theme-color" content="#111827"><title>ArchiTerrain V4.5</title>
+<meta name="theme-color" content="#111827"><title>ArchiTerrain V4.5.1</title>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 <style>
 :root{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#111827;background:#f4f6f8}
@@ -65,7 +65,7 @@ details{margin-top:8px}summary{color:#2563eb;cursor:pointer}.check{display:grid;
 .answer{padding:5px 8px;border-radius:999px;font-size:11px;font-weight:800}
 .answer.est{background:#dcfce7;color:#166534}.answer.cond{background:#fef3c7;color:#92400e}.answer.miss{background:#f1f5f9;color:#475569}
 </style></head><body>
-<header><div class="brand">ArchiTerrain</div><div class="sub">Pré-diagnostic urbanistique · V4.5 — moteur de règles</div></header>
+<header><div class="brand">ArchiTerrain</div><div class="sub">Pré-diagnostic urbanistique · V4.5.1 — correctif moteur de règles</div></header>
 <main>
 <section class="card"><div class="title">1 · Identifier le terrain</div>
 <div class="small">Adresse + références cadastrales facultatives</div>
@@ -265,11 +265,21 @@ function projectContext(){
 function projectForm(){return `<section class="card"><div class="title">3 · Paramètres du projet</div><div class="small">Ces paramètres servent à sélectionner la bonne branche réglementaire. Aucun chiffre n’est inventé lorsqu’un paramètre manque.</div><div class="grid"><div><label class="small">Type</label><select id="ptype"><option>Construction neuve</option><option>Extension</option><option>Annexe</option><option>Réhabilitation</option></select></div><div><label class="small">Hauteur envisagée</label><input id="height" placeholder="ex. 7,50 m"></div></div><div class="grid"><div><label class="small">Façade concernée</label><select id="facade"><option>Avec baie / ouverture</option><option>Sans baie / façade aveugle</option><option>Je ne sais pas</option></select></div><div><label class="small">Bâtiment existant conservé</label><select id="existing"><option>Non</option><option>Oui</option><option>Je ne sais pas</option></select></div></div><button onclick="applyProject()">Appliquer aux règles</button><div id="projectMsg"></div></section>`}
 
 
+
+// V4.5.1: safe regulation-text cache. Never let the rule tree break terrain identification.
+let localRegulation = {pages:[]};
+function cacheRegulationText(){
+ try{
+   const src = (window.S && S.regulationText) ? S.regulationText : "";
+   localRegulation.pages = src ? [{text:src}] : [];
+ }catch(_){ localRegulation={pages:[]}; }
+}
+
 function ruleChip(text,tone="miss"){
  return `<span class="answer ${tone}">${esc(text)}</span>`;
 }
 function ruleTreeFromText(){
- const text=(localRegulation?.pages||[]).map(p=>String(p.text||"")).join("\n");
+ const text=((localRegulation&&localRegulation.pages)||[]).map(p=>String(p.text||"")).join("\n");
  if(!text.trim()) return `<div class="treecase"><h3>🌳 Arbre de décision</h3><div class="small">Le règlement écrit n'est pas chargé dans cette session.</div></div>`;
  const clean=text.replace(/\s+/g," ");
  const find=rx=>{const m=clean.match(rx);return m?m[0]:""};
@@ -319,7 +329,7 @@ async function analyze(){
   document.getElementById("app").innerHTML=`<section class="card"><div class="row"><div><div class="small">Dossier</div><div class="title">${esc(S.adr.properties.label)}</div></div><span class="badge ok">Parcelle identifiée</span></div><div class="grid"><div class="metric"><span class="small">Parcelles</span><b>${selected.length}</b></div><div class="metric"><span class="small">Surface cumulée</span><b>${Math.round(selected.reduce((a,f)=>a+area(f),0))} m²</b></div></div><div id="map"></div></section>
 <section class="card"><div class="title">Composition foncière</div>${selected.map(f=>`<div class="check"><span><b>${esc(label(f))}</b><br><span class="small">Parcelle cadastrale · ${area(f)?Math.round(area(f))+" m²":"surface non fournie"}</span></span><span class="badge blue">Sélectionnée</span></div>`).join("")}</section>
 <section class="card"><div class="title">Urbanisme applicable</div><div class="rule"><strong>Zonage</strong><div>${zoneName(zones).map(esc).join(" · ")||"Zonage non retourné"}</div><div class="source">Source : API Carto / GPU</div></div>${officialDoc()}${officialDocumentCard()}</section>
-${rules(pres)}${regulatorySummary()}<section class="card"><div class="title">7 · Arbre de décision du règlement</div><div class="small">Le texte réglementaire est présenté comme une suite de branches, sans inventer de valeur lorsque les conditions ne sont pas établies.</div>${ruleTreeFromText()}</section>
+${rules(pres)}${regulatorySummary()}<section class="card"><div class="title">7 · Arbre de décision du règlement</div><div class="small">Le texte réglementaire est présenté comme une suite de branches, sans inventer de valeur lorsque les conditions ne sont pas établies.</div>${(()=>{try{return ruleTreeFromText()}catch(e){return '<div class="notice">Lecture automatique du règlement indisponible pour cette analyse. Les données cadastrales et GPU restent consultables.</div>'}})()}</section>
 <section class="card"><div class="title">Servitudes d’utilité publique</div>${side("SUP intersectantes",vals(sups))}</section>
 ${boundaryModel()}${projectForm()}
 <section class="card"><div class="title">5 · Synthèse fiable</div><div class="dangerline"><b>Établi</b><p>Parcelles, géométrie, zonage et intersections réellement retournées par les services officiels.</p></div><div class="okline"><b>Calculable ensuite</b><p>Une prescription côté par côté lorsque la géométrie et le texte réglementaire fournissent les éléments nécessaires.</p></div><div class="notice"><b>Règle V4.3 :</b> aucune distance, hauteur ou règle de prospect n’est présentée comme applicable sans preuve documentaire. Le moteur distingue désormais « prescription géographique trouvée » et « règle du règlement écrit à appliquer ».</div></section>`;
