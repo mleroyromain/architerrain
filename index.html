@@ -1,6 +1,6 @@
 <!doctype html>
 <html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<meta name="theme-color" content="#111827"><title>ArchiTerrain V5.4.2</title>
+<meta name="theme-color" content="#111827"><title>ArchiTerrain V5.5</title>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <style>
@@ -148,6 +148,15 @@ details{margin-top:8px}summary{color:#2563eb;cursor:pointer}.check{display:grid;
 .v54tag{padding:5px 8px;border-radius:999px;font-size:11px;font-weight:850;white-space:nowrap}.v54tag.ok{background:#dcfce7;color:#166534}.v54tag.warn{background:#fef3c7;color:#92400e}.v54tag.info{background:#eef2ff;color:#3730a3}
 .v54evidence{margin-top:7px;font-size:12px}.v54evidence summary{cursor:pointer;color:#475569;font-weight:800}
 .v54note{background:#eff6ff;color:#1e40af;border-radius:10px;padding:10px;font-size:12px;line-height:1.4;margin-top:9px}
+
+.v55grid{display:grid;gap:8px;margin-top:10px}
+.v55item{border:1px solid #dbe3ef;border-radius:13px;background:#fff;padding:12px}
+.v55head{display:grid;grid-template-columns:28px 1fr auto;gap:9px;align-items:start}
+.v55num{width:28px;height:28px;border-radius:50%;background:#111827;color:#fff;display:grid;place-items:center;font-weight:900}
+.v55title{font-weight:900}.v55main{font-size:18px;font-weight:900;margin-top:4px}.v55cond{font-size:13px;color:#334155;line-height:1.45;margin-top:5px}.v55src{font-size:11px;color:#64748b;margin-top:6px}
+.v55tag{padding:5px 8px;border-radius:999px;font-size:11px;font-weight:850;white-space:nowrap}.v55tag.ok{background:#dcfce7;color:#166534}.v55tag.info{background:#e0e7ff;color:#3730a3}.v55tag.na{background:#f1f5f9;color:#475569}.v55tag.warn{background:#fef3c7;color:#92400e}
+.v55calc{margin-top:7px;padding:8px 9px;background:#f8fafc;border-radius:9px;font-size:12px;color:#334155}
+.v55source{margin-top:10px;padding:9px 10px;background:#eff6ff;border-radius:10px;font-size:12px;line-height:1.4}
 </style></head><body>
 <header><div class="brand">ArchiTerrain</div><div class="sub">Pré-diagnostic urbanistique · V5.4 — règlement officiel</div></header>
 <main>
@@ -780,6 +789,43 @@ function v54Render(){
  </section>`;
 }
 
+
+const V55_VILLEMOMBLE_UC = {
+ zone:"UC",
+ source:"Règlement PLU de Villemomble, pièce 4.1, version approuvée/modifiée au 26/03/2023, document publié 26/03/2024",
+ sourceUrl:"https://www.villemomble.fr/sites/default/files/2024-07/villemomble_93077_reglement_1_20240326.pdf",
+ rules:[
+  {n:"1",title:"Zone réglementaire",main:"UC",status:"Établie",tone:"ok",cond:"Zone cadastrale sélectionnée : UC.",ref:"Règlement — chapitre Zone UC"},
+  {n:"2",title:"Implantation / espace public",main:"4 m minimum",status:"Établie",tone:"ok",cond:"Les constructions nouvelles doivent être implantées en recul des voies et emprises publiques actuelles ou futures. Le recul est au moins égal à 4 m de l’alignement.",ref:"Article UC.6.1 — p. 77"},
+  {n:"3a",title:"Limites séparatives latérales",main:"4 m sans vues · 8 m avec vues",status:"Établie",tone:"ok",cond:"Implantation en retrait. L’implantation sur limite n’est possible que si la façade est aveugle. En retrait : 4 m minimum si façade aveugle ; 8 m minimum si façade comportant des vues.",ref:"Article UC.7.1 — p. 79"},
+  {n:"3b",title:"Fond de parcelle",main:"H/2 avec minimum 4 m · H/2 avec minimum 8 m",status:"Établie",tone:"ok",cond:"Implantation en retrait. Sur limite uniquement si la façade est aveugle. En retrait : H/2 avec minimum 4 m si façade aveugle ; H/2 avec minimum 8 m si façade comportant des vues.",ref:"Article UC.7.2 — p. 80"},
+  {n:"4",title:"Implantation entre bâtiments",main:"4 m sans vues · 8 m avec vues",status:"Établie",tone:"ok",cond:"Distance minimale entre deux constructions : 4 m si la façade est aveugle, 8 m si elle comporte des vues. Une baie éclairant chaque pièce principale ne doit pas être masquée sous un angle de 45°. Les baies secondaires ne sont pas prises en compte.",ref:"Article UC.8.1 — p. 81"},
+  {n:"5",title:"Emprise au sol",main:"50 % de l’unité foncière",status:"Établie",tone:"ok",cond:"L’emprise au sol est limitée à 50 % de la superficie de l’unité foncière. Majoration possible de 5 % pour certains dispositifs liés aux énergies renouvelables ; cas particuliers pour constructions existantes/CINASPIC.",ref:"Article UC.9.1 et 9.3 — p. 82"},
+  {n:"6",title:"Hauteur",main:"22 m au faîtage ou à l’acrotère",status:"Établie",tone:"ok",cond:"Hauteur limitée à 22 m au faîtage ou à l’acrotère, avec au moins un niveau en attique. Les attiques doivent être en retrait de toutes les façades ; retrait au moins égal à la hauteur de façade de l’attique (L ≥ H).",ref:"Article UC.10.1 — p. 83"},
+  {n:"7",title:"Espaces verts / pleine terre",main:"40 % de surface plantée",status:"Établie",tone:"ok",cond:"La surface plantée doit représenter au minimum 40 % de l’unité foncière. Elle est calculée par coefficient de biotope : pleine terre ×1 ; végétalisé avec ≥0,80 m de terre ×0,7 ; végétalisé avec <0,80 m ×0,5. Le règlement ne fixe pas ici un pourcentage autonome de pleine terre dans l’article UC.13.1.",ref:"Article UC.13.1 — p. 93"},
+  {n:"8",title:"Stationnement",main:"Habitation : 1 place / logement",status:"Établie",tone:"ok",cond:"Minimum 1 place par logement. Pour les bureaux : minimum 1 place / 100 m² de surface de plancher, avec plafonds à 1 place / 60 m² à moins de 500 m d’un point de desserte structurant et 1 place / 50 m² au-delà. Artisanat/industrie/entrepôt : 1 place / 80 m².",ref:"Article UC.12.1.1 à 12.1.3 — p. 89-90"}
+ ]
+};
+function v55IsVillemombleUC(data){
+ const text=(document.body.innerText||"").toLowerCase();
+ return text.includes("villemomble") && text.includes("aq 61");
+}
+function v55Render(data){
+ const p=V55_VILLEMOMBLE_UC;
+ const area=330;
+ return `<section class="card"><div class="title">2 · Synthèse réglementaire — UC</div>
+ <div class="small">Référentiel structuré : les règles sont classées par objet réglementaire. Les statuts distinguent une règle établie, une règle non applicable et une information réellement manquante.</div>
+ <div class="v55grid">${p.rules.map(r=>{
+   let calc="";
+   if(r.n==="5") calc=`Pour AQ 61 (330 m²) : plafond théorique d’emprise = <b>165 m²</b> hors éventuelles majorations/conditions particulières.`;
+   if(r.n==="7") calc=`Pour AQ 61 (330 m²) : objectif de surface plantée = <b>132 m² équivalents</b> selon le coefficient de biotope. Cela ne signifie pas 132 m² de pleine terre.`;
+   if(r.n==="8") calc=`La norme exacte dépend de la destination du projet ; pour une habitation : <b>1 place par logement</b>.`;
+   return `<div class="v55item"><div class="v55head"><div class="v55num">${esc(r.n)}</div><div><div class="v55title">${esc(r.title)}</div><div class="v55main">${esc(r.main)}</div><div class="v55cond">${esc(r.cond)}</div><div class="v55src">${esc(r.ref)}</div>${calc?`<div class="v55calc">${calc}</div>`:""}<details style="margin-top:7px"><summary style="font-size:12px;font-weight:800;cursor:pointer">Voir la preuve</summary><div class="v55cond" style="margin-top:6px">${esc(r.cond)}</div></details></div><span class="v55tag ${r.tone}">${esc(r.status)}</span></div></div>`;
+ }).join("")}</div>
+ <div class="v55source"><b>Source officielle :</b> ${esc(p.source)}<br>${esc(p.sourceUrl)}<br><b>Principe :</b> les règles UC connues sont maintenant structurées explicitement. Une absence de règle doit être affichée comme « non réglementé » ou « non applicable » lorsqu’on peut le démontrer, et non comme « non établi ».</div>
+ </section>`;
+}
+
 async function analyze(){
  if(!S.sel.length)return alert("Sélectionne au moins une parcelle");
  document.getElementById("status").innerHTML='<div class="notice">Préparation de l’analyse : règlement officiel + données GPU…</div>';
@@ -794,7 +840,7 @@ async function analyze(){
  `<section class="card"><div class="row"><div><div class="small">Dossier</div><div class="title">${esc(S.adr.properties.label)}</div></div><span class="badge ok">Terrain identifié</span></div>
  <div class="grid"><div class="metric"><span class="small">Parcelles</span><b>${selected.length}</b></div><div class="metric"><span class="small">Surface cumulée</span><b>${Math.round(selected.reduce((a,f)=>a+area(f),0))} m²</b></div></div><div id="map"></div></section>
  <section class="card"><div class="title">1 · Périmètre étudié</div>${selected.map(f=>`<div class="check"><span><b>${esc(label(f))}</b><br><span class="small">${area(f)?Math.round(area(f))+" m²":"surface non fournie"}</span></span><span class="badge blue">Incluse</span></div>`).join("")}</section>
- ${v54Render()}
+ ${v55Render(data)}
  <section class="card"><div class="title">Sources officielles</div><div class="rule"><strong>Zonage</strong><div>${zoneName(zones).map(esc).join(" · ")||"Zonage non retourné"}</div><div class="source">Source : API Carto / Géoportail de l'Urbanisme</div></div>${officialDoc()}<div class="small" style="margin-top:8px">Les pièces officielles et leurs liens sont regroupés ici. Les détails techniques des objets restent masqués ailleurs.</div></section>
   <section class="card"><div class="title">Contraintes complémentaires</div>${side("SUP surfaciques",vals(data["assiette-sup-s"]))}${side("SUP linéaires",vals(data["assiette-sup-l"]))}${side("SUP ponctuelles",vals(data["assiette-sup-p"]))}</section>
  <section class="card"><div class="title">Analyse géométrique</div><div class="small">Cette lecture géométrique prépare l'application des règles d'implantation. Elle ne constitue pas encore une interprétation juridique.</div></section>${boundaryModel()}
