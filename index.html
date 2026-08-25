@@ -1,6 +1,6 @@
 <!doctype html>
 <html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<meta name="theme-color" content="#111827"><title>ArchiTerrain V5.4</title>
+<meta name="theme-color" content="#111827"><title>ArchiTerrain V5.4.1</title>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <style>
@@ -715,14 +715,14 @@ function v53Regulation(data){
 
 
 function v54FindZoneBlock(){
- const pages=officialReg.pages||[];
+ const pages=(typeof officialReg==="object" && Array.isArray(officialReg.pages))?officialReg.pages:[];
  const startRx=/Dispositions applicables aux zones UC\s*\(zones pavillonnaires\)|Dispositions applicables aux zones UC\b/i;
  let start=-1;
  for(let i=0;i<pages.length;i++){if(startRx.test(pages[i].text)){start=i;break;}}
  if(start<0)return null;
  let text="";
  for(let i=start;i<pages.length;i++){
-   const t=pages[i].text||"";
+   const t=typeof pages[i].text==="string" ? pages[i].text : String(pages[i].text||"");
    if(i>start && /Dispositions applicables (?:à la|aux) zones? U[A-Z]/i.test(t) && !/zones? UC\b/i.test(t)) break;
    text+=` [PAGE ${pages[i].page}] ${t}`;
    if(text.length>120000)break;
