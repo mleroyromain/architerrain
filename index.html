@@ -1,6 +1,6 @@
 <!doctype html>
 <html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<meta name="theme-color" content="#111827"><title>ArchiTerrain V5.5</title>
+<meta name="theme-color" content="#111827"><title>ArchiTerrain V5.6</title>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <style>
@@ -801,7 +801,7 @@ const V55_VILLEMOMBLE_UC = {
   {n:"3b",title:"Fond de parcelle",main:"H/2 avec minimum 4 m · H/2 avec minimum 8 m",status:"Établie",tone:"ok",cond:"Implantation en retrait. Sur limite uniquement si la façade est aveugle. En retrait : H/2 avec minimum 4 m si façade aveugle ; H/2 avec minimum 8 m si façade comportant des vues.",ref:"Article UC.7.2 — p. 80"},
   {n:"4",title:"Implantation entre bâtiments",main:"4 m sans vues · 8 m avec vues",status:"Établie",tone:"ok",cond:"Distance minimale entre deux constructions : 4 m si la façade est aveugle, 8 m si elle comporte des vues. Une baie éclairant chaque pièce principale ne doit pas être masquée sous un angle de 45°. Les baies secondaires ne sont pas prises en compte.",ref:"Article UC.8.1 — p. 81"},
   {n:"5",title:"Emprise au sol",main:"50 % de l’unité foncière",status:"Établie",tone:"ok",cond:"L’emprise au sol est limitée à 50 % de la superficie de l’unité foncière. Majoration possible de 5 % pour certains dispositifs liés aux énergies renouvelables ; cas particuliers pour constructions existantes/CINASPIC.",ref:"Article UC.9.1 et 9.3 — p. 82"},
-  {n:"6",title:"Hauteur",main:"22 m au faîtage ou à l’acrotère",status:"Établie",tone:"ok",cond:"Hauteur limitée à 22 m au faîtage ou à l’acrotère, avec au moins un niveau en attique. Les attiques doivent être en retrait de toutes les façades ; retrait au moins égal à la hauteur de façade de l’attique (L ≥ H).",ref:"Article UC.10.1 — p. 83"},
+  {n:"6",title:"Hauteur",main:"7 m à l’égout / acrotère · 9 m au faîtage",status:"Règle générale PLUi",tone:"ok",cond:"Le PLUi en vigueur remplace le PLU communal archivé. Pour la zone UC, la règle générale est de 7 m à l’égout de toiture ou à l’acrotère et 9 m au faîtage. Les combles sont autorisés ; les éventuels attiques peuvent dépasser la hauteur générale dans la limite d’un niveau supplémentaire. Une prescription graphique « Hauteur maximale » peut préciser ou remplacer localement la règle générale : elle doit être intersectée avec la parcelle avant de conclure définitivement pour AQ 61.",ref:"PLUi Grand Paris Grand Est — règlement écrit, § 4.4 « Hauteur des constructions » + prescription graphique 39.02"},
   {n:"7",title:"Espaces verts / pleine terre",main:"40 % de surface plantée",status:"Établie",tone:"ok",cond:"La surface plantée doit représenter au minimum 40 % de l’unité foncière. Elle est calculée par coefficient de biotope : pleine terre ×1 ; végétalisé avec ≥0,80 m de terre ×0,7 ; végétalisé avec <0,80 m ×0,5. Le règlement ne fixe pas ici un pourcentage autonome de pleine terre dans l’article UC.13.1.",ref:"Article UC.13.1 — p. 93"},
   {n:"8",title:"Stationnement",main:"Habitation : 1 place / logement",status:"Établie",tone:"ok",cond:"Minimum 1 place par logement. Pour les bureaux : minimum 1 place / 100 m² de surface de plancher, avec plafonds à 1 place / 60 m² à moins de 500 m d’un point de desserte structurant et 1 place / 50 m² au-delà. Artisanat/industrie/entrepôt : 1 place / 80 m².",ref:"Article UC.12.1.1 à 12.1.3 — p. 89-90"}
  ]
@@ -822,7 +822,7 @@ function v55Render(data){
    if(r.n==="8") calc=`La norme exacte dépend de la destination du projet ; pour une habitation : <b>1 place par logement</b>.`;
    return `<div class="v55item"><div class="v55head"><div class="v55num">${esc(r.n)}</div><div><div class="v55title">${esc(r.title)}</div><div class="v55main">${esc(r.main)}</div><div class="v55cond">${esc(r.cond)}</div><div class="v55src">${esc(r.ref)}</div>${calc?`<div class="v55calc">${calc}</div>`:""}<details style="margin-top:7px"><summary style="font-size:12px;font-weight:800;cursor:pointer">Voir la preuve</summary><div class="v55cond" style="margin-top:6px">${esc(r.cond)}</div></details></div><span class="v55tag ${r.tone}">${esc(r.status)}</span></div></div>`;
  }).join("")}</div>
- <div class="v55source"><b>Source officielle :</b> ${esc(p.source)}<br>${esc(p.sourceUrl)}<br><b>Principe :</b> les règles UC connues sont maintenant structurées explicitement. Une absence de règle doit être affichée comme « non réglementé » ou « non applicable » lorsqu’on peut le démontrer, et non comme « non établi ».</div>
+ <div class="v55source"><b>Source opposable :</b> ${esc(p.source)}<br>${esc(p.sourceUrl)}<br><b>Ancien PLU communal :</b> archivé — il ne doit plus alimenter la synthèse actuelle.<br><b>Principe :</b> les règles UC connues sont maintenant structurées explicitement. Une absence de règle doit être affichée comme « non réglementé » ou « non applicable » lorsqu’on peut le démontrer, et non comme « non établi ».</div>
  </section>`;
 }
 
