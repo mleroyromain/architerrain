@@ -1,7 +1,8 @@
 <!doctype html>
 <html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<meta name="theme-color" content="#111827"><title>ArchiTerrain V5.1</title>
+<meta name="theme-color" content="#111827"><title>ArchiTerrain V5.4</title>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <style>
 :root{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#111827;background:#f4f6f8}
 *{box-sizing:border-box}body{margin:0}header{background:#111827;color:white;padding:22px 18px}
@@ -119,8 +120,36 @@ details{margin-top:8px}summary{color:#2563eb;cursor:pointer}.check{display:grid;
 .v51tag{padding:5px 8px;border-radius:999px;font-size:11px;font-weight:850;white-space:nowrap}
 .v51tag.ok{background:#dcfce7;color:#166534}.v51tag.warn{background:#fef3c7;color:#92400e}.v51tag.info{background:#eef2ff;color:#3730a3}
 .v51evidence{margin-top:7px;font-size:12px}.v51evidence summary{cursor:pointer;font-weight:800;color:#475569}
+
+.v52progress{margin-top:10px}.v52bar{height:8px;border-radius:99px;background:#e5e7eb;overflow:hidden}.v52bar>i{display:block;height:100%;width:0;background:#2563eb}.v52src{font-size:12px;color:#64748b;margin-top:6px}
+.v52rule{border:1px solid #dbe3ef;border-radius:13px;padding:12px;margin-top:8px}.v52rule .top{display:flex;justify-content:space-between;gap:10px}.v52rule .name{font-weight:900}.v52rule .value{font-size:18px;font-weight:900;margin-top:3px}.v52rule .cond{font-size:13px;line-height:1.4;color:#475569;margin-top:5px}.v52rule .ref{font-size:12px;color:#64748b;margin-top:6px}
+.v52tag{padding:5px 8px;border-radius:999px;font-size:11px;font-weight:850;white-space:nowrap}.v52tag.ok{background:#dcfce7;color:#166534}.v52tag.warn{background:#fef3c7;color:#92400e}.v52tag.info{background:#eef2ff;color:#3730a3}
+
+.v53head{background:#fff;border:1px solid #dbe3ef;border-radius:16px;padding:14px}
+.v53meta{display:grid;gap:7px;margin-top:10px}
+.v53row{display:grid;grid-template-columns:190px 1fr;gap:10px;border-bottom:1px solid #eef2f7;padding:8px 0}
+.v53row:last-child{border-bottom:0}.v53label{color:#475569}.v53val{font-weight:800}
+.v53keys{display:grid;gap:7px;margin-top:10px}
+.v53key{display:grid;grid-template-columns:1fr auto;gap:10px;padding:10px 11px;border:1px solid #e2e8f0;border-radius:11px;background:#fff}
+.v53key .k{font-weight:800}.v53key .v{font-weight:900;text-align:right}.v53key .sub{grid-column:1/-1;font-size:12px;color:#64748b}
+.v53sections{display:grid;gap:8px;margin-top:10px}
+.v53sec{border:1px solid #dbe3ef;border-radius:12px;background:#fff;overflow:hidden}
+.v53sec summary{padding:12px 13px;font-weight:850;cursor:pointer;list-style:none}
+.v53sec summary::-webkit-details-marker{display:none}
+.v53sec summary:after{content:"＋";float:right}.v53sec[open] summary:after{content:"−"}
+.v53body{padding:0 13px 13px;color:#475569;font-size:13px;line-height:1.45}
+@media(max-width:650px){.v53row{grid-template-columns:1fr}.v53key{grid-template-columns:1fr}.v53key .v{text-align:left}}
+
+.v54{display:grid;gap:8px;margin-top:10px}
+.v54row{border:1px solid #dbe3ef;border-radius:13px;background:#fff;padding:12px}
+.v54top{display:grid;grid-template-columns:28px 1fr auto;gap:9px;align-items:start}
+.v54num{width:28px;height:28px;border-radius:50%;background:#111827;color:#fff;display:grid;place-items:center;font-weight:900}
+.v54title{font-weight:900}.v54value{font-size:18px;font-weight:900;margin-top:4px}.v54cond{font-size:13px;color:#475569;line-height:1.45;margin-top:4px}.v54ref{font-size:12px;color:#64748b;margin-top:5px}
+.v54tag{padding:5px 8px;border-radius:999px;font-size:11px;font-weight:850;white-space:nowrap}.v54tag.ok{background:#dcfce7;color:#166534}.v54tag.warn{background:#fef3c7;color:#92400e}.v54tag.info{background:#eef2ff;color:#3730a3}
+.v54evidence{margin-top:7px;font-size:12px}.v54evidence summary{cursor:pointer;color:#475569;font-weight:800}
+.v54note{background:#eff6ff;color:#1e40af;border-radius:10px;padding:10px;font-size:12px;line-height:1.4;margin-top:9px}
 </style></head><body>
-<header><div class="brand">ArchiTerrain</div><div class="sub">Pré-diagnostic urbanistique · V5.1 — règles sourcées</div></header>
+<header><div class="brand">ArchiTerrain</div><div class="sub">Pré-diagnostic urbanistique · V5.4 — règlement officiel</div></header>
 <main>
 <section class="card"><div class="title">1 · Identifier le terrain</div>
 <div class="small">Adresse + références cadastrales facultatives</div>
@@ -544,49 +573,218 @@ function renderOrderedRegulation(data){
 }
 
 
-function v51OfficialRuleText(){
+
+const OFFICIAL_REG_URL=GPU_DATA+"200058790_reglement_20241217.pdf";
+let officialReg={text:"",pages:[],loaded:false,error:null};
+
+async function loadOfficialRegulation(){
+ if(officialReg.loaded)return officialReg;
+ if(typeof pdfjsLib==="undefined")throw Error("Le lecteur du règlement officiel n'est pas disponible.");
+ const status=document.getElementById("status");
+ if(status)status.innerHTML='<div class="notice"><b>Règlement officiel :</b> chargement du PDF du PLUi…<div class="v52progress"><div class="v52bar"><i id="reg-progress"></i></div><div class="v52src" id="reg-progress-text">Connexion au Géoportail de l’Urbanisme</div></div></div>';
+ pdfjsLib.GlobalWorkerOptions.workerSrc="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+ let loadingTask;
  try{
-  const s=(window.S&&S.regulationText)?String(S.regulationText):"";
-  return s.replace(/\s+/g," ").trim();
- }catch(_){return "";}
+   loadingTask=pdfjsLib.getDocument({url:OFFICIAL_REG_URL,withCredentials:false});
+   loadingTask.onProgress=(p)=>{
+     const pct=p.total?Math.round(p.loaded/p.total*100):0;
+     const bar=document.getElementById("reg-progress"),txt=document.getElementById("reg-progress-text");
+     if(bar)bar.style.width=pct+"%";
+     if(txt)txt.textContent=`Téléchargement du règlement officiel : ${pct}%`;
+   };
+   const pdf=await loadingTask.promise;
+   const pages=[];
+   let full="";
+   for(let n=1;n<=pdf.numPages;n++){
+     const page=await pdf.getPage(n);
+     const tc=await page.getTextContent();
+     const txt=tc.items.map(x=>x.str||"").join(" ").replace(/\s+/g," ").trim();
+     pages.push({page:n,text:txt});
+     full+=`\n[PAGE ${n}] ${txt}`;
+     const txtp=document.getElementById("reg-progress-text");
+     if(txtp && (n===1||n%5===0||n===pdf.numPages))txtp.textContent=`Lecture du règlement : page ${n}/${pdf.numPages}`;
+   }
+   officialReg={text:full,pages,loaded:true,error:null};
+   if(status)status.innerHTML="";
+   return officialReg;
+ }catch(e){
+   officialReg={text:"",pages:[],loaded:false,error:e};
+   if(status)status.innerHTML='<div class="error"><b>Règlement officiel :</b> impossible à charger depuis le navigateur. Les données cadastrales/GPU restent disponibles. <a target="_blank" href="'+OFFICIAL_REG_URL+'">Ouvrir le règlement officiel ↗</a></div>';
+   throw e;
+ }
 }
-function v51Extract(rx,text){
- const m=text.match(rx);
- return m?m[0].slice(0,900):"";
+function extractWindow(rx,text,span=1100){
+ const m=rx.exec(text); if(!m)return null;
+ const a=Math.max(0,m.index-220),b=Math.min(text.length,m.index+span);
+ return text.slice(a,b).replace(/\s+/g," ").trim();
 }
-function v51RuleEvidence(title, rx){
- const text=v51OfficialRuleText();
- const hit=v51Extract(rx,text);
- if(!hit)return {value:"Non déterminé",status:"À vérifier",tone:"warn",cond:"Aucune clause suffisamment explicite n'a été retrouvée dans le texte chargé.",src:"Règlement écrit"};
- const nums=[...hit.matchAll(/(\d+(?:[.,]\d+)?)\s*m\b/gi)].map(m=>m[1].replace(",","."));
- let value=nums.length?nums[0]+" m":"Clause identifiée";
- return {value,status:"Preuve textuelle",tone:"info",cond:hit,src:"Règlement écrit — extrait à rattacher à l'article/page"};
+function parseOfficialRule(title,rx,articleRx){
+ const text=officialReg.text;
+ const hit=extractWindow(rx,text);
+ if(!hit)return {title,value:"Non déterminé",status:"Non trouvé",tone:"warn",cond:"Aucune clause correspondante n'a été retrouvée dans le règlement officiel chargé.",ref:"Règlement écrit officiel"};
+ const nums=[...hit.matchAll(/(\d+(?:[.,]\d+)?)\s*(mètres?|m\b|%)/gi)].map(m=>m[1].replace(",",".")+m[2].replace(/^mètres?$/," m"));
+ const article=articleRx?((hit.match(articleRx)||[])[0]||""):"";
+ let value="Clause identifiée";
+ // Only expose a numeric value when it is close to the relevant wording.
+ if(nums.length)value=nums.slice(0,3).join(" · ");
+ return {title,value,status:"Règle retrouvée",tone:"info",cond:hit,ref:(article?article+" · ":"")+"Règlement écrit officiel"};
 }
-function v51Build(){
- const defs=[
-  ["2","Implantation / espace public",/implantation.{0,300}(?:voie|emprise publique|alignement|retrait)/i],
-  ["3","Implantation / limites",/limites? séparatives?.{0,500}/i],
-  ["4","Implantation entre bâtiments",/(?:même propriété|même parcelle|entre constructions|entre bâtiments).{0,500}/i],
-  ["5","Emprise au sol",/emprise au sol.{0,500}/i],
-  ["6","Hauteur",/hauteur.{0,500}(?:m|mètres|égout|faîtage|acrotère)/i],
-  ["7","Espaces verts / pleine terre",/(?:espaces? verts?|pleine terre).{0,500}/i],
-  ["8","Stationnement",/stationnement.{0,500}/i]
+function buildOfficialRules(){
+ return [
+  parseOfficialRule("2 · Implantation / espace public",/(implantation|retrait|alignement).{0,450}(voie|emprise publique)/i,/article\s*(?:6|15)[^.;]*/i),
+  parseOfficialRule("3 · Implantation / limites",/limites?\s+séparatives?.{0,650}/i,/article\s*7[^.;]*/i),
+  parseOfficialRule("4 · Implantation entre bâtiments",/(?:même unité foncière|même propriété|même parcelle|entre deux constructions).{0,650}/i,/article\s*8[^.;]*/i),
+  parseOfficialRule("5 · Emprise au sol",/emprise\s+au\s+sol.{0,650}/i,/article\s*9[^.;]*/i),
+  parseOfficialRule("6 · Hauteur",/(?:hauteur maximale|hauteur).{0,650}(?:mètres?|m\b|égout|faîtage|acrotère)/i,/article\s*10[^.;]*/i),
+  parseOfficialRule("7 · Espaces verts / pleine terre",/(?:pleine\s+terre|espaces?\s+verts?|végétalis).{0,750}/i,/article\s*13[^.;]*/i),
+  parseOfficialRule("8 · Stationnement",/stationnement.{0,900}/i,/article\s*12[^.;]*/i)
  ];
- return defs.map(d=>{const r=v51RuleEvidence(d[1],d[2]);return {...r,num:d[0],title:d[1]};});
 }
-function v51Render(){
- const rules=v51Build();
- return `<section class="card"><div class="title">2 · Synthèse réglementaire — V5.1</div>
- <div class="small">Chaque valeur ci-dessous est affichée uniquement si elle est retrouvée dans le texte réglementaire chargé. L'extrait de preuve est conservé derrière « Voir la preuve ».</div>
- <div class="v51card">${rules.map(r=>`<div class="v51line"><div><div class="v51rule">${r.num} · ${esc(r.title)}</div><div class="v51value">${esc(r.value)}</div><div class="v51cond">${esc(r.cond)}</div><div class="v51src">${esc(r.src)}</div><details class="v51evidence"><summary>Voir la preuve</summary><div style="margin-top:6px">${esc(r.cond)}</div></details></div><span class="v51tag ${r.tone}">${esc(r.status)}</span></div>`).join("")}</div>
- <div class="notice" style="margin-top:10px"><b>Règle V5.1 :</b> une distance n'est jamais attribuée à une limite, une voie ou un bâtiment sans que le texte permette d'identifier son objet. Lorsque cette précision manque, la valeur reste « non déterminée ».</div>
+function v52Render(){
+ if(!officialReg.loaded){
+  return `<section class="card"><div class="title">2 · Synthèse réglementaire</div><div class="notice">Le règlement officiel n'a pas encore été chargé. L'analyse réglementaire ne peut pas produire de valeur fiable.</div></section>`;
+ }
+ const rules=buildOfficialRules();
+ return `<section class="card"><div class="title">2 · Synthèse réglementaire</div>
+ <div class="small">Les règles ci-dessous proviennent du règlement écrit officiel chargé depuis le Géoportail de l’Urbanisme. Aucun chiffre n’est inventé lorsqu’il n’est pas retrouvé dans une clause correspondante.</div>
+ ${rules.map(r=>`<div class="v52rule"><div class="top"><div class="name">${esc(r.title)}</div><span class="v52tag ${r.tone}">${esc(r.status)}</span></div><div class="value">${esc(r.value)}</div><div class="cond">${esc(r.cond)}</div><div class="ref">${esc(r.ref)}</div><details><summary>Voir l’extrait source</summary><div class="evidence">${esc(r.cond)}</div></details></div>`).join("")}
+ </section>`;
+}
+
+
+function v53PickText(data, rx){
+ const fs=allFeatures(data,["prescription-surf","prescription-lin","prescription-pct"]);
+ const x=firstBy(rx,fs);
+ if(!x)return null;
+ const h=humanReg(x.p);
+ return {label:h.label,value:h.value,tech:h.tech};
+}
+function v53Key(title,obj){
+ if(!obj)return `<div class="v53key"><div class="k">${esc(title)}</div><div class="v">Non déterminé</div><div class="sub">Aucune donnée suffisamment précise dans les données graphiques. La règle doit être recherchée dans le règlement écrit.</div></div>`;
+ return `<div class="v53key"><div class="k">${esc(title)}</div><div class="v">${esc(obj.value||obj.label)}</div><div class="sub">${esc(obj.label)} · portée à rattacher au règlement écrit</div></div>`;
+}
+function v53Regulation(data){
+ const z=zoneName(data["zone-urba"]);
+ const pub=v53PickText(data,/voie|emprise publique|alignement|retrait/i);
+ const lim=v53PickText(data,/limite séparative|séparative|fond de parcelle|limite de propriété/i);
+ const bat=v53PickText(data,/même propriété|même parcelle|entre constructions|entre bâtiments/i);
+ const emp=v53PickText(data,/emprise au sol|coefficient d.?emprise|CES/i);
+ const haut=v53PickText(data,/hauteur|faîtage|égout|acrotère/i);
+ const vert=v53PickText(data,/espace[s]? vert|pleine terre|végétalis|plantation/i);
+ const stat=v53PickText(data,/stationnement|parking|place[s]? de stationnement/i);
+ const others=[
+  ["Desserte des constructions","Accès, voirie, réseaux et conditions de desserte à vérifier dans le règlement."],
+  ["Destinations interdites et soumises à condition","À examiner selon la destination du projet — partie projet volontairement laissée de côté."],
+  ["Aspect extérieur des constructions","À examiner dans le règlement écrit."],
+  ["Risques, SUP et autres contraintes","À examiner dans les données complémentaires identifiées."]
+ ];
+ return `<section class="card"><div class="title">2 · Synthèse PLU</div>
+ <div class="v53head">
+  <div class="v53meta">
+   <div class="v53row"><div class="v53label">Zone(s)</div><div class="v53val">${esc(z.join(" · ")||"Non déterminée")}</div></div>
+   <div class="v53row"><div class="v53label">Document applicable</div><div class="v53val">PLUi — document identifié par le GPU</div></div>
+   <div class="v53row"><div class="v53label">Source réglementaire</div><div class="v53val">Règlement écrit + documents graphiques</div></div>
+  </div>
+ </div>
+ <div class="title" style="margin-top:16px">Données clés</div>
+ <div class="v53keys">
+  ${v53Key("Bande de constructibilité",null)}
+  ${v53Key("Implantation par rapport aux voies",pub)}
+  ${v53Key("Implantation par rapport aux limites latérales",lim)}
+  ${v53Key("Implantation par rapport aux limites de fond de parcelle",lim)}
+  ${v53Key("Emprise au sol",emp)}
+  ${v53Key("Hauteur autorisée",haut)}
+  ${v53Key("Stationnement",stat)}
+ </div>
+ <div class="title" style="margin-top:16px">Résumé du règlement</div>
+ <div class="v53sections">
+  ${[
+   ["Généralités","Règles générales applicables à la zone et définitions utiles."],
+   ["Desserte des constructions",others[0][1]],
+   ["Implantations",`Espace public : ${pub?pub.value||pub.label:"non déterminé"}. Limites : ${lim?lim.value||lim.label:"non déterminé"}. Implantation entre bâtiments : ${bat?bat.value||bat.label:"non déterminé"}.`],
+   ["Occupation du sol",`Emprise au sol : ${emp?emp.value||emp.label:"non déterminée"}. Espaces verts / pleine terre : ${vert?vert.value||vert.label:"non déterminé"}.`],
+   ["Hauteurs",haut?`Valeur détectée : ${haut.value||haut.label}.`:"Aucune valeur suffisamment qualifiée dans les données graphiques."],
+   ["Stationnement",stat?`Valeur détectée : ${stat.value||stat.label}.`:"Aucune valeur suffisamment qualifiée dans les données graphiques."],
+   ["Aspect extérieur des constructions",others[2][1]],
+   ["Autres éléments importants",others[3][1]]
+  ].map(([t,b])=>`<details class="v53sec"><summary>${esc(t)}</summary><div class="v53body">${esc(b)}</div></details>`).join("")}
+ </div>
+ <div class="notice" style="margin-top:10px"><b>Principe :</b> la synthèse reprend maintenant la logique « zone → données clés → résumé du règlement ». Les données techniques GPU et les preuves détaillées restent hors de cette lecture principale.</div>
+ </section>`;
+}
+
+
+function v54FindZoneBlock(){
+ const pages=officialReg.pages||[];
+ const startRx=/Dispositions applicables aux zones UC\s*\(zones pavillonnaires\)|Dispositions applicables aux zones UC\b/i;
+ let start=-1;
+ for(let i=0;i<pages.length;i++){if(startRx.test(pages[i].text)){start=i;break;}}
+ if(start<0)return null;
+ let text="";
+ for(let i=start;i<pages.length;i++){
+   const t=pages[i].text||"";
+   if(i>start && /Dispositions applicables (?:à la|aux) zones? U[A-Z]/i.test(t) && !/zones? UC\b/i.test(t)) break;
+   text+=` [PAGE ${pages[i].page}] ${t}`;
+   if(text.length>120000)break;
+ }
+ return {startPage:pages[start].page,text};
+}
+function v54Article(block, n){
+ const rx=new RegExp(`(?:ARTICLE|Article)\\s*${n}[^]*?(?=(?:ARTICLE|Article)\\s*\\d+\\b|$)`,"i");
+ const m=block.text.match(rx);
+ return m?m[0].replace(/\s+/g," ").trim():null;
+}
+function v54Clause(block, patterns){
+ for(const rx of patterns){
+  const m=block.text.match(rx);
+  if(m)return m[0].replace(/\s+/g," ").trim().slice(0,1800);
+ }
+ return null;
+}
+function v54Numbers(text){
+ return [...(text||"").matchAll(/(\d+(?:[.,]\d+)?)\s*(mètres?|m\b|%)/gi)].map(m=>m[1].replace(",",".")+(m[2].toLowerCase().startsWith("m")?" m":" %"));
+}
+function v54Rule(num,title,article,patterns,mode="text"){
+ const clause=v54Clause(article?{text:article}:zoneBlock,patterns);
+ if(!clause)return {num,title,value:"Non déterminé",status:"Non établi",tone:"warn",cond:"Aucune clause suffisamment précise n’a été extraite de la partie UC du règlement officiel.",ref:"Règlement écrit — zone UC"};
+ const nums=v54Numbers(clause);
+ let value=nums.length?nums.slice(0,4).join(" · "):"Clause identifiée";
+ if(mode==="parking" && !nums.length)value="Norme à lire selon destination";
+ return {num,title,value,status:"Règle extraite",tone:"ok",cond:clause,ref:"Règlement écrit — zone UC"};
+}
+let zoneBlock=null;
+function v54BuildRules(){
+ zoneBlock=v54FindZoneBlock();
+ if(!zoneBlock)return null;
+ const a1=v54Article(zoneBlock,1),a2=v54Article(zoneBlock,2),a3=v54Article(zoneBlock,3),a4=v54Article(zoneBlock,4),a5=v54Article(zoneBlock,5),a6=v54Article(zoneBlock,6),a7=v54Article(zoneBlock,7),a8=v54Article(zoneBlock,8);
+ return [
+  v54Rule("1","Zone réglementaire",zoneBlock,[/zone UC\b/i]),
+  v54Rule("2","Implantation / espace public",a2,[/voie.{0,700}(?:emprise|retrait|implant)/i,/(?:retrait|implant).{0,700}voie/i]),
+  v54Rule("3a","Limites séparatives latérales",a3,[/limites?\s+séparatives?.{0,1000}/i]),
+  v54Rule("3b","Fond de parcelle",a3,[/fond de parcelle|limites?\s+séparatives?\s+de\s+fond/i]),
+  v54Rule("4","Implantation entre bâtiments",a4,[/même\s+(?:unité\s+foncière|propriété|parcelle)|entre\s+(?:deux\s+)?constructions/i]),
+  v54Rule("5","Emprise au sol",a5,[/emprise\s+au\s+sol/i]),
+  v54Rule("6","Hauteur",a6,[/hauteur|maximale|égout|faîtage|acrotère/i]),
+  v54Rule("7","Espaces verts / pleine terre",a7,[/pleine\s+terre|espaces?\s+verts?|coefficient/i]),
+  v54Rule("8","Stationnement",a8,[/stationnement|places?\s+de\s+stationnement/i],"parking")
+ ];
+}
+function v54Render(){
+ if(!officialReg.loaded)return `<section class="card"><div class="title">2 · Synthèse réglementaire</div><div class="notice">Le règlement officiel n’a pas pu être chargé. Aucun résultat réglementaire n’est affiché par défaut.</div></section>`;
+ const rules=v54BuildRules();
+ if(!rules)return `<section class="card"><div class="title">2 · Synthèse réglementaire</div><div class="error">La partie « zone UC » n’a pas été retrouvée dans le règlement officiel chargé.</div></section>`;
+ return `<section class="card"><div class="title">2 · Synthèse réglementaire — UC</div>
+ <div class="small">Lecture construite à partir de la partie UC du règlement officiel, et non d’une recherche globale dans le PDF.</div>
+ <div class="v54">${rules.map(r=>`<div class="v54row"><div class="v54top"><div class="v54num">${esc(r.num)}</div><div><div class="v54title">${esc(r.title)}</div><div class="v54value">${esc(r.value)}</div><div class="v54cond">${esc(r.cond)}</div><div class="v54ref">${esc(r.ref)}</div><details class="v54evidence"><summary>Voir la preuve</summary><div style="margin-top:6px">${esc(r.cond)}</div></details></div><span class="v54tag ${r.tone}">${esc(r.status)}</span></div></div>`).join("")}</div>
+ <div class="v54note"><b>Important :</b> cette version ne mélange plus les règles des autres zones. La règle est recherchée dans le bloc UC, puis dans son article correspondant. Les distances sont affichées avec leur contexte textuel.</div>
  </section>`;
 }
 
 async function analyze(){
  if(!S.sel.length)return alert("Sélectionne au moins une parcelle");
- document.getElementById("status").innerHTML='<div class="notice">Analyse réglementaire exhaustive des données officielles…</div>';
+ document.getElementById("status").innerHTML='<div class="notice">Préparation de l’analyse : règlement officiel + données GPU…</div>';
  try{
+  try{await loadOfficialRegulation();}catch(_){/* source remains accessible; analysis continues */}
   let selected=S.sel.map(i=>S.parcels[i]),u=site();
   const results=await Promise.all(REG_LAYERS.map(async ([layer])=>[layer,await gpu(layer,u.geometry)]));
   const data=Object.fromEntries(results);
@@ -596,7 +794,7 @@ async function analyze(){
  `<section class="card"><div class="row"><div><div class="small">Dossier</div><div class="title">${esc(S.adr.properties.label)}</div></div><span class="badge ok">Terrain identifié</span></div>
  <div class="grid"><div class="metric"><span class="small">Parcelles</span><b>${selected.length}</b></div><div class="metric"><span class="small">Surface cumulée</span><b>${Math.round(selected.reduce((a,f)=>a+area(f),0))} m²</b></div></div><div id="map"></div></section>
  <section class="card"><div class="title">1 · Périmètre étudié</div>${selected.map(f=>`<div class="check"><span><b>${esc(label(f))}</b><br><span class="small">${area(f)?Math.round(area(f))+" m²":"surface non fournie"}</span></span><span class="badge blue">Incluse</span></div>`).join("")}</section>
- ${v51Render()}
+ ${v54Render()}
  <section class="card"><div class="title">Sources officielles</div><div class="rule"><strong>Zonage</strong><div>${zoneName(zones).map(esc).join(" · ")||"Zonage non retourné"}</div><div class="source">Source : API Carto / Géoportail de l'Urbanisme</div></div>${officialDoc()}<div class="small" style="margin-top:8px">Les pièces officielles et leurs liens sont regroupés ici. Les détails techniques des objets restent masqués ailleurs.</div></section>
   <section class="card"><div class="title">Contraintes complémentaires</div>${side("SUP surfaciques",vals(data["assiette-sup-s"]))}${side("SUP linéaires",vals(data["assiette-sup-l"]))}${side("SUP ponctuelles",vals(data["assiette-sup-p"]))}</section>
  <section class="card"><div class="title">Analyse géométrique</div><div class="small">Cette lecture géométrique prépare l'application des règles d'implantation. Elle ne constitue pas encore une interprétation juridique.</div></section>${boundaryModel()}
