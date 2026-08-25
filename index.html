@@ -1,6 +1,6 @@
 <!doctype html>
 <html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<meta name="theme-color" content="#111827"><title>ArchiTerrain V4.4</title>
+<meta name="theme-color" content="#111827"><title>ArchiTerrain V4.2.1</title>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 <style>
 :root{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#111827;background:#f4f6f8}
@@ -40,61 +40,31 @@ details{margin-top:8px}summary{color:#2563eb;cursor:pointer}.check{display:grid;
 .tag.road{background:#dbeafe;color:#1d4ed8}.tag.lat{background:#ede9fe;color:#6d28d9}
 .tag.fond{background:#ffedd5;color:#c2410c}.tag.none{background:#f1f5f9;color:#475569}
 .sourcepill{margin-top:8px;background:#f8fafc;border-radius:9px;padding:8px;font-size:12px}
-
-.doccard{border:1px solid #dbe3ef;border-radius:14px;padding:14px;background:#fff;margin-top:10px}
-.doccard .status{display:inline-block;padding:6px 9px;border-radius:999px;background:#dcfce7;color:#166534;font-size:12px;font-weight:800}
-.proof{border-left:4px solid #2563eb;background:#eff6ff;padding:10px;border-radius:8px;margin-top:8px}
-.proof.warn{border-left-color:#f59e0b;background:#fffbeb}.proof strong{display:block}
-
-.summary{display:grid;gap:10px;margin-top:10px}
-.summarycard{border:1px solid #dbe3ef;border-radius:14px;padding:14px;background:#fff}
-.summarycard .headline{font-size:17px;font-weight:850}.summarycard .value{font-size:22px;font-weight:850;margin-top:5px}
-.summarycard .why{font-size:13px;color:#475569;margin-top:5px;line-height:1.4}
-.summarycard.green{border-left:5px solid #22c55e}.summarycard.amber{border-left:5px solid #f59e0b}.summarycard.blue{border-left:5px solid #2563eb}
-.summarytable{width:100%;border-collapse:collapse;margin-top:8px;font-size:13px}
-.summarytable td{padding:9px 5px;border-bottom:1px solid #e5e7eb;vertical-align:top}
-.summarytable td:first-child{font-weight:800;width:38%}
 </style></head><body>
-<header><div class="brand">ArchiTerrain</div><div class="sub">Pré-diagnostic urbanistique · V4.4 — synthèse réglementaire</div></header>
+<header><div class="brand">ArchiTerrain</div><div class="sub">Pré-diagnostic urbanistique · V4.2.1 — géocodage IGN corrigé</div></header>
 <main>
 <section class="card"><div class="title">1 · Identifier le terrain</div>
 <div class="small">Adresse + références cadastrales facultatives</div>
 <input id="address" value="28 boulevard André, 93250 Villemomble">
 <input id="refs" placeholder="AQ 61, AQ 62, AQ 63">
-<button type="button" onclick="searchLand()">Identifier le terrain</button><div class="small">Géocodage : Géoplateforme IGN / BAN · Cadastre : API Carto IGN</div><div id="status"></div></section>
+<button onclick="searchLand()">Identifier le terrain</button><div class="small">Géocodage : Géoplateforme IGN / BAN · Cadastre : API Carto IGN</div><div id="status"></div></section>
 <div id="app"></div></main>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@turf/turf@7/turf.min.js"></script>
 <script>
-const API="https://apicarto.ign.fr/api",GEOCODE="https://data.geopf.fr/geocodage/search/";
+const API="https://apicarto.ign.fr/api",GEOCODE="https://data.geopf.fr/geocodage/search";
 let S={adr:null,parcels:[],sel:[],map:null};
 const esc=x=>String(x??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 const pick=(p,ks)=>{for(const k of ks)if(p&&p[k]!=null&&p[k]!=="")return p[k];return null};
 const label=f=>{let p=f.properties||{},s=pick(p,["section","code_section","section_cadastrale"]),n=pick(p,["numero","numero_parcelle","num_parcelle"]);if(!s)for(const k in p)if(/section/i.test(k)&&p[k])s=p[k];if(!n)for(const k in p)if(/numero|num.*parc/i.test(k)&&p[k])n=p[k];return s||n?`${s||"—"} ${String(n||"—").replace(/^0+/,"")}`:(p.id_parcelle||p.id||"Parcelle")};
 const area=f=>Number(pick(f.properties||{},["contenance","surface"])||0);
-async function get(url){
- let r;
- try{r=await fetch(url,{method:"GET",mode:"cors",headers:{"Accept":"application/json"}});}
- catch(e){throw Error("Connexion impossible au service : "+(e.message||"réseau/CORS"))}
- if(!r.ok){let body="";try{body=await r.text()}catch(_){}throw Error("Service indisponible ("+r.status+")"+(body?" — "+body.slice(0,180):""))}
- return r.json();
-}
+async function get(url){let r=await fetch(url);if(!r.ok)throw Error("Service indisponible ("+r.status+")");return r.json()}
 async function geo(q){
- const url=GEOCODE+"?q="+encodeURIComponent(q)+"&index=address&limit=10&autocomplete=false";
- let j;
- try{ j=await get(url); }
- catch(e){
-   // Fallback kept for compatibility with environments that still proxy the former BAN endpoint.
-   const legacy="https://api-adresse.data.gouv.fr/search/?q="+encodeURIComponent(q)+"&limit=10";
-   try{ j=await get(legacy); }catch(e2){throw Error("Le service d’adresse IGN est inaccessible depuis ce navigateur. Détail : "+e.message);}
- }
- if(!j.features?.length)throw Error("Adresse introuvable. Essaie « 28 boulevard André, 93250 Villemomble ».");
- const first=v=>Array.isArray(v)?v[0]:v;
- const ranked=[...j.features].sort((a,b)=>(Number(b.properties?.score)||0)-(Number(a.properties?.score)||0));
- const f=ranked[0],p=f.properties||{};
+ let j=await get(GEOCODE+"?q="+encodeURIComponent(q)+"&limit=5");
+ if(!j.features?.length)throw Error("Adresse introuvable");
+ const f=j.features[0],p=f.properties||{},first=v=>Array.isArray(v)?v[0]:v;
  p.label=first(p.label)||[first(p.housenumber),first(p.street),first(p.postcode),first(p.city)].filter(Boolean).join(" ");
  p.citycode=first(p.citycode)||first(p.cityCode); p.postcode=first(p.postcode); p.city=first(p.city);
- if(!f.geometry?.coordinates?.length)throw Error("Le géocodeur a trouvé l’adresse mais n’a pas retourné ses coordonnées.");
  return f;
 }
 async function parcelsByGeom(g){let j=await get(API+"/cadastre/parcelle?geom="+encodeURIComponent(JSON.stringify(g))+"&source_ign=PCI");return j.features||[]}
@@ -107,9 +77,7 @@ function bbox(c,d=.00055){let[x,y]=c;return{type:"Polygon",coordinates:[[[x-d,y-
 async function searchLand(){
  document.getElementById("status").innerHTML='<div class="notice">Recherche cadastrale…</div>';
  try{
-  const q=document.getElementById("address").value.trim(); if(!q)throw Error("Saisis une adresse."); document.getElementById("status").innerHTML='<div class="notice">1/2 · Géocodage IGN de « '+esc(q)+' »…</div>';
- S.adr=await geo(q);
- document.getElementById("status").innerHTML='<div class="notice">2/2 · Adresse trouvée : <b>'+esc(S.adr.properties.label||q)+'</b> · récupération du cadastre…</div>';
+  const q=document.getElementById("address").value.trim(); if(!q)throw Error("Saisis une adresse."); S.adr=await geo(q);
   let refs=document.getElementById("refs").value.split(",").map(x=>x.trim()).filter(Boolean),fs=[];
   if(refs.length){for(let r of refs){let m=r.match(/^([A-Za-z]{1,3})\s*(\d{1,4})$/);if(m)fs.push(...await parcelsByRef(S.adr.properties.citycode,m[1],m[2]))}}
   else fs=await parcelsByGeom({type:"Point",coordinates:S.adr.geometry.coordinates});
@@ -186,55 +154,40 @@ function boundaryModel(){
 }
 
 
-
-const GPU_DOC_ID="ddc33189b83435a97b231cae7df34aaf";
-const GPU_DOC_ARCHIVE="200058790_PLUi_20241217";
-const GPU_BASE="https://www.geoportail-urbanisme.gouv.fr";
-const GPU_DATA="https://data.geopf.fr/annexes/gpu/documents/DU_200058790/ddc33189b83435a97b231cae7df34aaf/";
-function officialDocumentCard(){
- return `<div class="doccard">
- <div class="row"><div><b>PLUi Grand Paris – Grand Est</b><div class="small">${GPU_DOC_ARCHIVE}</div></div><span class="status">Publié · en vigueur · approuvé</span></div>
- <div class="source" style="margin-top:8px">Identifiant GPU : ${GPU_DOC_ID}</div>
- <div style="margin-top:9px"><a target="_blank" href="${GPU_BASE}/document/by-id/${GPU_DOC_ID}?tab=2">Fiche officielle du document ↗</a></div>
- <div class="proof"><strong>Règlement écrit officiel</strong><a target="_blank" href="${GPU_DATA}200058790_reglement_20241217.pdf">Ouvrir le PDF du règlement ↗</a></div>
- <div class="proof"><strong>Prescription 15-01 — voie / emprise publique</strong><a target="_blank" href="${GPU_DATA}200058790_prescription_surf_15_01_20241217.pdf">Ouvrir la pièce 15-01 ↗</a></div>
- <div class="proof warn"><strong>Principe V4.3</strong>Les codes 15-02 et 15-03 ne sont pas affirmés ici comme des prescriptions surfaciques du dossier : la liste officielle des pièces du PLUi publiée par le GPU fait apparaître 15-01 pour l'implantation par rapport aux voies/emprises publiques, mais pas de pièces 15-02/15-03 distinctes. Les limites séparatives et le fond de parcelle doivent donc être établis à partir du règlement écrit applicable.</div>
- </div>`;
-}
 function regulationCandidates(pres,kind){
  const out=[];
  for(const f of pres?.features||[]){
   const p=f.properties||{};
-  const t=String(p.typepsc||p.type||"").trim(),s=String(p.stypepsc||p.stype||"").trim();
+  const t=String(p.typepsc||p.type||"").trim(), s=String(p.stypepsc||p.stype||"").trim();
   const code=t&&s?`${t}-${s}`:(t||s||"");
   const text=txt(p);
-  if(kind==="road" && (code==="15-01"||/voie|emprise publique/i.test(text))) out.push({code:code||"15-01",text});
+  if((kind==="road"&&(code==="15-01"||/voie|emprise publique/i.test(text))) ||
+     (kind==="lateral"&&(code==="15-02"||/limite.*separative.*lat/i.test(text))) ||
+     (kind==="fond"&&(code==="15-03"||/fond.*parcelle/i.test(text)))){
+    out.push({code:code||"—",text});
+  }
  }
  return out;
 }
 async function runSideMapping(site,pres){
  const box=document.getElementById("side-analysis"); if(!box)return;
- const roads=await nearbyRoads(site),edges=edgeClassification(site,roads);
+ const roads=await nearbyRoads(site);
+ const edges=edgeClassification(site,roads);
  const name=edges.find(e=>e.kind==="road"&&e.road)?.road?.name;
  const html=edges.map((e,i)=>{
-   const label=e.kind==="road"?"Voie / emprise publique":e.kind==="fond"?"Fond de parcelle":e.kind==="lateral"?"Limite séparative":"Limite non classée";
-   const cls=e.kind==="road"?"road":e.kind==="fond"?"fond":e.kind==="lateral"?"lat":"none";
-   const cand=regulationCandidates(pres,e.kind);
-   const proof=e.kind==="road"
-      ? (cand.length?"Prescription géographique 15-01 intersectante / candidate.":"La pièce 15-01 existe dans le document, mais aucune intersection de prescription n'est retournée pour ce segment.")
-      : "Pas de prescription surfacique 15-02/15-03 affirmée : recherche dans le règlement écrit nécessaire.";
+   const kind=e.kind;
+   const label=kind==="road"?"Voie / emprise publique":kind==="fond"?"Fond de parcelle":kind==="lateral"?"Limite séparative latérale":"Limite non classée";
+   const cls=kind==="road"?"road":kind==="fond"?"fond":kind==="lateral"?"lat":"none";
+   const cand=regulationCandidates(pres,kind);
    return `<div class="maprow"><div class="top"><div class="name">Segment ${i+1} — ${label}</div><span class="tag ${cls}">${e.confidence}</span></div>
    <div class="sub">Longueur ≈ ${Math.round(e.len*111000)} m${e.road?` · voie proche : ${esc(e.road.name)}`:""}</div>
-   <div class="sourcepill"><b>Preuve réglementaire :</b> ${esc(proof)}</div>
-   ${cand.length?`<div class="sourcepill"><b>Code CNIG :</b> ${cand.map(x=>esc(x.code)).join(" · ")}</div>`:""}
-   </div>`;
+   <div class="sourcepill"><b>Prescription candidate :</b> ${cand.length?cand.map(x=>esc(x.code)).join(" · "):"aucune correspondance automatique"}</div></div>`;
  }).join("");
- box.innerHTML=`<h4>Géométrie → preuve réglementaire</h4>
- <div class="notice">${name?`Front de rue candidat : <b>${esc(name)}</b>.`:"Front de rue non identifié."} La V4.3 ne transforme plus un code CNIG en distance : elle exige une chaîne de preuve.</div>
+ box.innerHTML=`<h4>Géométrie → prescription</h4>
+ <div class="notice">${name?`Front de rue candidat : <b>${esc(name)}</b>.`:"Front de rue non identifié."} Le moteur relie maintenant la géométrie à une <b>catégorie CNIG candidate</b>, sans encore en déduire la règle.</div>
  <div class="mapping">${html}</div>
- <div class="small" style="margin-top:8px"><b>Chaîne de preuve :</b> côté géométrique → intersection éventuelle → pièce GPU → article du règlement → condition → valeur. Une valeur absente à un maillon reste non déterminée.</div>`;
+ <div class="small" style="margin-top:8px"><b>Règle de fiabilité :</b> segment géométrique → catégorie CNIG → document → article → valeur. Si un maillon manque, aucune distance n'est affirmée.</div>`;
 }
-
 function rules(pres){
  let fs=pres?.features||[];if(!fs.length)return `<div class="side"><h3>Règles opposables détectées</h3><div class="small">Aucune prescription surfacique retournée. Cela ne signifie pas « aucune règle » : le règlement écrit reste indispensable.</div></div>`;
  return `<div class="side"><h3>Règles opposables détectées</h3>${fs.map(f=>{let p=f.properties||{},code=(p.typepsc||"")+"-"+(p.stypepsc||""),a=[];for(let i=1;i<=5;i++)if(p["lib_attr"+i]&&p["lib_val"+i])a.push(p["lib_attr"+i]+": "+p["lib_val"+i]);return `<div class="rule"><strong>Code CNIG ${esc(code)}</strong><div>${esc(a.join(" · ")||txt(p))}</div><div class="evidence">Portée non déduite automatiquement. Le code CNIG classe la prescription ; il ne remplace pas le texte réglementaire.</div></div>`}).join("")}</div>`;
@@ -249,63 +202,12 @@ async function analyze(){
   document.getElementById("status").innerHTML="";
   document.getElementById("app").innerHTML=`<section class="card"><div class="row"><div><div class="small">Dossier</div><div class="title">${esc(S.adr.properties.label)}</div></div><span class="badge ok">Parcelle identifiée</span></div><div class="grid"><div class="metric"><span class="small">Parcelles</span><b>${selected.length}</b></div><div class="metric"><span class="small">Surface cumulée</span><b>${Math.round(selected.reduce((a,f)=>a+area(f),0))} m²</b></div></div><div id="map"></div></section>
 <section class="card"><div class="title">Composition foncière</div>${selected.map(f=>`<div class="check"><span><b>${esc(label(f))}</b><br><span class="small">Parcelle cadastrale · ${area(f)?Math.round(area(f))+" m²":"surface non fournie"}</span></span><span class="badge blue">Sélectionnée</span></div>`).join("")}</section>
-<section class="card"><div class="title">Urbanisme applicable</div><div class="rule"><strong>Zonage</strong><div>${zoneName(zones).map(esc).join(" · ")||"Zonage non retourné"}</div><div class="source">Source : API Carto / GPU</div></div>${officialDoc()}${officialDocumentCard()}</section>
+<section class="card"><div class="title">Urbanisme applicable</div><div class="rule"><strong>Zonage</strong><div>${zoneName(zones).map(esc).join(" · ")||"Zonage non retourné"}</div><div class="source">Source : API Carto / GPU</div></div>${officialDoc()}</section>
 ${rules(pres)}
 <section class="card"><div class="title">Servitudes d’utilité publique</div>${side("SUP intersectantes",vals(sups))}</section>
 ${boundaryModel()}${projectForm()}
-
-function regulatorySummary(){
- return `<section class="card">
- <div class="title">5 · Synthèse réglementaire exploitable</div>
- <div class="small">Lecture volontairement courte : ce qui est établi, ce qui conditionne le projet, et ce qu'il faut ouvrir dans le règlement.</div>
- <div class="summary">
-   <div class="summarycard blue">
-    <div class="headline">🏘️ Zone UC — secteur pavillonnaire</div>
-    <div class="value">Règlement UC applicable</div>
-    <div class="why">Le règlement du PLUi comporte un chapitre spécifique aux zones pavillonnaires UC. Pour l'implantation, le § 3.3.2 renvoie aux dispositions communes et à l'annexe « Règles relatives à l’implantation des constructions par rapport aux limites séparatives ».</div>
-    <div class="source">Règlement écrit, § 3.3.2 · p. 183</div>
-   </div>
-   <div class="summarycard amber">
-    <div class="headline">🛣️ Par rapport à la voie</div>
-    <div class="value">Règle à lire avec le document graphique</div>
-    <div class="why">Le § 3.3.1 comporte des modalités de calcul du retrait et des dispositions identifiées au document graphique « Implantation des constructions par rapport aux voies et emprises publiques ». Une distance ne doit donc pas être inventée à partir du seul code 15-01.</div>
-    <div class="source">Règlement écrit, § 3.3.1 · pièce graphique 15-01</div>
-   </div>
-   <div class="summarycard amber">
-    <div class="headline">↔️ Limites séparatives</div>
-    <div class="value">Latérales ≠ fond de parcelle</div>
-    <div class="why">Le moteur doit d'abord qualifier chaque côté du terrain. Ensuite seulement il applique la règle de limite latérale ou de fond issue du règlement et de son annexe. C'est la condition pour répondre correctement à « 4 m par rapport à quoi ? ».</div>
-    <div class="source">Règlement écrit, § 3.3.2 · annexe 1</div>
-   </div>
-   <div class="summarycard amber">
-    <div class="headline">🏠 Constructions entre elles</div>
-    <div class="value">4 m / H selon secteur graphique</div>
-    <div class="why">Le § 3.3.3 prévoit des règles variables selon les secteurs identifiés au document graphique. Les cas avec façades comportant des baies et les autres cas ne doivent pas être confondus avec un retrait par rapport à une limite de propriété.</div>
-    <div class="source">Règlement écrit, § 3.3.3 · p. 184</div>
-   </div>
-   <div class="summarycard green">
-    <div class="headline">🧱 Existant non conforme</div>
-    <div class="value">Extension : cas particulier</div>
-    <div class="why">Pour les constructions existantes légalement édifiées mais non conformes, le règlement prévoit des conditions spécifiques, notamment des plafonds de surface de plancher supplémentaire de 30 % ou 20 % selon la surface existante.</div>
-    <div class="source">Règlement écrit, § 3.2.5</div>
-   </div>
- </div>
- <div class="doccard">
-  <b>Lecture architecte — ordre de travail</b>
-  <table class="summarytable">
-   <tr><td>1. Terrain</td><td>Identifier les parcelles constitutives de l'unité foncière.</td></tr>
-   <tr><td>2. Front de rue</td><td>Déterminer quelle limite donne réellement sur la voie de référence.</td></tr>
-   <tr><td>3. Limites</td><td>Classer les autres côtés : latéraux ou fond.</td></tr>
-   <tr><td>4. Document graphique</td><td>Vérifier les prescriptions graphiques qui affectent chaque côté ou secteur.</td></tr>
-   <tr><td>5. Règlement écrit</td><td>Appliquer la branche correspondant au type de projet : neuf, extension, annexe, etc.</td></tr>
-   <tr><td>6. Projet</td><td>Seulement ensuite calculer les distances, hauteurs, prospects et vues.</td></tr>
-  </table>
- </div>
- </section>`;
-}
-<section class="card"><div class="title">6 · Contrôle de fiabilité</div><div class="dangerline"><b>Établi</b><p>Parcelles, géométrie, zonage et intersections réellement retournées par les services officiels.</p></div><div class="okline"><b>Calculable ensuite</b><p>Une prescription côté par côté lorsque la géométrie et le texte réglementaire fournissent les éléments nécessaires.</p></div><div class="notice"><b>Règle V4.3 :</b> aucune distance, hauteur ou règle de prospect n’est présentée comme applicable sans preuve documentaire. Le moteur distingue désormais « prescription géographique trouvée » et « règle du règlement écrit à appliquer ».</div></section>`;
-  buildMap(u,selected);
-  runSideMapping(u,pres);
+<section class="card"><div class="title">5 · Synthèse fiable</div><div class="dangerline"><b>Établi</b><p>Parcelles, géométrie, zonage et intersections réellement retournées par les services officiels.</p></div><div class="okline"><b>Calculable ensuite</b><p>Une prescription côté par côté lorsque la géométrie et le texte réglementaire fournissent les éléments nécessaires.</p></div><div class="notice"><b>Règle V4 :</b> aucune distance n’est présentée comme applicable à une limite si sa portée n’est pas démontrée par une donnée géographique + une source réglementaire.</div></section>`;
+  buildMap(u,selected);\n  runSideMapping(u,pres);
  }catch(e){document.getElementById("status").innerHTML='<div class="error">'+esc(e.message)+"</div>"}
 }
 function applyProject(){document.getElementById("projectMsg").innerHTML='<div class="notice">Paramètres enregistrés. La prochaine étape les croisera avec les branches réglementaires côté par côté.</div>'}
