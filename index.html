@@ -1,6 +1,6 @@
 <!doctype html>
 <html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<meta name="theme-color" content="#111827"><title>ArchiTerrain V4.4.2</title>
+<meta name="theme-color" content="#111827"><title>ArchiTerrain V4.5</title>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 <style>
 :root{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#111827;background:#f4f6f8}
@@ -54,8 +54,18 @@ details{margin-top:8px}summary{color:#2563eb;cursor:pointer}.check{display:grid;
 .summarytable{width:100%;border-collapse:collapse;margin-top:8px;font-size:13px}
 .summarytable td{padding:9px 5px;border-bottom:1px solid #e5e7eb;vertical-align:top}
 .summarytable td:first-child{font-weight:800;width:38%}
+
+.ruletree{display:grid;gap:10px;margin-top:10px}
+.treecase{border:1px solid #dbe3ef;border-radius:14px;padding:14px;background:#fff}
+.treecase h3{margin:0 0 5px;font-size:17px}
+.branch{display:grid;gap:7px;margin-top:9px}
+.branchrow{display:grid;grid-template-columns:1fr auto;gap:10px;align-items:center;border-top:1px solid #eef2f7;padding:9px 0}
+.branchrow .q{font-weight:700}.branchrow .a{font-weight:850;text-align:right}
+.branchrow .src{grid-column:1/-1;font-size:12px;color:#64748b}
+.answer{padding:5px 8px;border-radius:999px;font-size:11px;font-weight:800}
+.answer.est{background:#dcfce7;color:#166534}.answer.cond{background:#fef3c7;color:#92400e}.answer.miss{background:#f1f5f9;color:#475569}
 </style></head><body>
-<header><div class="brand">ArchiTerrain</div><div class="sub">Pré-diagnostic urbanistique · V4.4.2 — bouton sécurisé</div></header>
+<header><div class="brand">ArchiTerrain</div><div class="sub">Pré-diagnostic urbanistique · V4.5 — moteur de règles</div></header>
 <main>
 <section class="card"><div class="title">1 · Identifier le terrain</div>
 <div class="small">Adresse + références cadastrales facultatives</div>
@@ -239,8 +249,46 @@ function rules(pres){
  let fs=pres?.features||[];if(!fs.length)return `<div class="side"><h3>Règles opposables détectées</h3><div class="small">Aucune prescription surfacique retournée. Cela ne signifie pas « aucune règle » : le règlement écrit reste indispensable.</div></div>`;
  return `<div class="side"><h3>Règles opposables détectées</h3>${fs.map(f=>{let p=f.properties||{},code=(p.typepsc||"")+"-"+(p.stypepsc||""),a=[];for(let i=1;i<=5;i++)if(p["lib_attr"+i]&&p["lib_val"+i])a.push(p["lib_attr"+i]+": "+p["lib_val"+i]);return `<div class="rule"><strong>Code CNIG ${esc(code)}</strong><div>${esc(a.join(" · ")||txt(p))}</div><div class="evidence">Portée non déduite automatiquement. Le code CNIG classe la prescription ; il ne remplace pas le texte réglementaire.</div></div>`}).join("")}</div>`;
 }
+
+function projectContext(){
+ return `<section class="card"><div class="title">Paramètres qui débloquent les règles</div>
+ <div class="grid">
+  <div class="metric"><span class="small">Projet</span><b id="ctx-type">Construction neuve</b></div>
+  <div class="metric"><span class="small">Hauteur</span><b id="ctx-height">Non renseignée</b></div>
+  <div class="metric"><span class="small">Baies</span><b id="ctx-openings">À qualifier</b></div>
+  <div class="metric"><span class="small">Existant</span><b id="ctx-existing">Non renseigné</b></div>
+ </div>
+ <div class="notice" style="margin-top:10px">Ces paramètres ne modifient pas le règlement. Ils servent à choisir la branche applicable quand le règlement prévoit plusieurs cas.</div>
+ </section>`;
+}
+
 function projectForm(){return `<section class="card"><div class="title">3 · Paramètres du projet</div><div class="small">Ces paramètres servent à sélectionner la bonne branche réglementaire. Aucun chiffre n’est inventé lorsqu’un paramètre manque.</div><div class="grid"><div><label class="small">Type</label><select id="ptype"><option>Construction neuve</option><option>Extension</option><option>Annexe</option><option>Réhabilitation</option></select></div><div><label class="small">Hauteur envisagée</label><input id="height" placeholder="ex. 7,50 m"></div></div><div class="grid"><div><label class="small">Façade concernée</label><select id="facade"><option>Avec baie / ouverture</option><option>Sans baie / façade aveugle</option><option>Je ne sais pas</option></select></div><div><label class="small">Bâtiment existant conservé</label><select id="existing"><option>Non</option><option>Oui</option><option>Je ne sais pas</option></select></div></div><button onclick="applyProject()">Appliquer aux règles</button><div id="projectMsg"></div></section>`}
 
+
+function ruleChip(text,tone="miss"){
+ return `<span class="answer ${tone}">${esc(text)}</span>`;
+}
+function ruleTreeFromText(){
+ const text=(localRegulation?.pages||[]).map(p=>String(p.text||"")).join("\n");
+ if(!text.trim()) return `<div class="treecase"><h3>🌳 Arbre de décision</h3><div class="small">Le règlement écrit n'est pas chargé dans cette session.</div></div>`;
+ const clean=text.replace(/\s+/g," ");
+ const find=rx=>{const m=clean.match(rx);return m?m[0]:""};
+ const rules=[];
+ const patterns=[
+  [/limites séparatives.{0,700}/i,"Limites séparatives"],
+  [/implantation.{0,700}voies.{0,700}/i,"Implantation par rapport aux voies"],
+  [/baies?.{0,500}(?:limite|retrait|distance)/i,"Baies / vues"],
+  [/construction.{0,500}(?:même propriété|une même propriété)/i,"Constructions entre elles"],
+  [/construction[s]? existante[s]?.{0,600}/i,"Constructions existantes"]
+ ];
+ for(const [rx,title] of patterns){const hit=find(rx);if(hit)rules.push({title,hit});}
+ return `<div class="ruletree">
+  ${rules.map(r=>`<div class="treecase"><h3>${esc(r.title)}</h3>
+    <div class="branchrow"><div class="q">Clause détectée dans le règlement</div>${ruleChip("Preuve textuelle","est")}<div class="src">${esc(r.hit.slice(0,1600))}</div></div>
+    <div class="branchrow"><div class="q">Interprétation automatique</div>${ruleChip("À appliquer après qualification du cas","cond")}<div class="src">Le moteur ne convertit pas ce passage en distance sans identifier la parcelle, le côté, le type de projet et les conditions prévues par le texte.</div></div>
+  </div>`).join("")}
+ </div>`;
+}
 function regulatorySummary(){
  return `<section class="card">
  <div class="title">5 · Synthèse réglementaire exploitable</div>
@@ -271,7 +319,7 @@ async function analyze(){
   document.getElementById("app").innerHTML=`<section class="card"><div class="row"><div><div class="small">Dossier</div><div class="title">${esc(S.adr.properties.label)}</div></div><span class="badge ok">Parcelle identifiée</span></div><div class="grid"><div class="metric"><span class="small">Parcelles</span><b>${selected.length}</b></div><div class="metric"><span class="small">Surface cumulée</span><b>${Math.round(selected.reduce((a,f)=>a+area(f),0))} m²</b></div></div><div id="map"></div></section>
 <section class="card"><div class="title">Composition foncière</div>${selected.map(f=>`<div class="check"><span><b>${esc(label(f))}</b><br><span class="small">Parcelle cadastrale · ${area(f)?Math.round(area(f))+" m²":"surface non fournie"}</span></span><span class="badge blue">Sélectionnée</span></div>`).join("")}</section>
 <section class="card"><div class="title">Urbanisme applicable</div><div class="rule"><strong>Zonage</strong><div>${zoneName(zones).map(esc).join(" · ")||"Zonage non retourné"}</div><div class="source">Source : API Carto / GPU</div></div>${officialDoc()}${officialDocumentCard()}</section>
-${rules(pres)}${regulatorySummary()}
+${rules(pres)}${regulatorySummary()}<section class="card"><div class="title">7 · Arbre de décision du règlement</div><div class="small">Le texte réglementaire est présenté comme une suite de branches, sans inventer de valeur lorsque les conditions ne sont pas établies.</div>${ruleTreeFromText()}</section>
 <section class="card"><div class="title">Servitudes d’utilité publique</div>${side("SUP intersectantes",vals(sups))}</section>
 ${boundaryModel()}${projectForm()}
 <section class="card"><div class="title">5 · Synthèse fiable</div><div class="dangerline"><b>Établi</b><p>Parcelles, géométrie, zonage et intersections réellement retournées par les services officiels.</p></div><div class="okline"><b>Calculable ensuite</b><p>Une prescription côté par côté lorsque la géométrie et le texte réglementaire fournissent les éléments nécessaires.</p></div><div class="notice"><b>Règle V4.3 :</b> aucune distance, hauteur ou règle de prospect n’est présentée comme applicable sans preuve documentaire. Le moteur distingue désormais « prescription géographique trouvée » et « règle du règlement écrit à appliquer ».</div></section>`;
@@ -279,7 +327,15 @@ ${boundaryModel()}${projectForm()}
   runSideMapping(u,pres);
  }catch(e){document.getElementById("status").innerHTML='<div class="error">'+esc(e.message)+"</div>"}
 }
-function applyProject(){document.getElementById("projectMsg").innerHTML='<div class="notice">Paramètres enregistrés. La prochaine étape les croisera avec les branches réglementaires côté par côté.</div>'}
+function applyProject(){
+ const type=document.getElementById("ptype")?.value||"—",height=document.getElementById("height")?.value||"Non renseignée",
+ facade=document.getElementById("facade")?.value||"À qualifier",existing=document.getElementById("existing")?.value||"Non renseigné";
+ document.getElementById("ctx-type").textContent=type;
+ document.getElementById("ctx-height").textContent=height;
+ document.getElementById("ctx-openings").textContent=facade;
+ document.getElementById("ctx-existing").textContent=existing;
+ document.getElementById("projectMsg").innerHTML='<div class="notice">Paramètres enregistrés : les branches conditionnelles peuvent maintenant être sélectionnées.</div>';
+}
 
 document.addEventListener("DOMContentLoaded",()=>{
  const b=document.getElementById("identify-btn");
